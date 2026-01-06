@@ -1,0 +1,280 @@
+# GeoAI-VLM
+
+**Geospatial Vision-Language Model analysis for street-level imagery.**
+
+GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) to generate structured descriptions of street-level images. It's designed for urban analytics, spatial clustering, and GeoAI research.
+
+## Features
+
+- 🗺️ **Geospatial Queries**: Point, line, polygon, and bounding box queries with automatic buffering
+- 📸 **Mapillary Integration**: Download street-level imagery via ZenSVI
+- 🤖 **VLM Analysis**: Generate structured descriptions using Qwen-VL, LLaVA, and other models
+- 📊 **GeoParquet Output**: Native geometry columns for seamless GIS integration
+- 📏 **Distance Calculations**: Automatic distance-to-query computation using haversine
+- ⚡ **High Performance**: VLLM backend for fast batch inference (Transformers fallback available)
+- 🔄 **Resume Support**: Skip already-processed images for incremental workflows
+
+## Requirements
+
+- Python 3.9 or higher
+- CUDA-compatible GPU (recommended for VLM inference)
+- [Mapillary API key](https://www.mapillary.com/developer) for downloading street-level imagery
+
+## Installation
+
+### Option 1: Install from PyPI (when published)
+
+```bash
+pip install geoai-vlm -c https://raw.githubusercontent.com/yunusserhat/geoai-vlm/main/constraints.txt
+```
+
+### Option 2: Install from GitHub
+
+#### Using uv (recommended, fastest)
+
+```bash
+# Clone the repository
+git clone https://github.com/yunusserhat/geoai-vlm.git
+cd geoai-vlm
+
+# Create virtual environment and install
+uv venv
+source .venv/bin/activate  # Linux/macOS
+# or: .venv\Scripts\activate  # Windows
+
+uv pip install .
+
+# For development
+uv pip install -e ".[dev]"
+```
+
+#### Using pip + venv
+
+```bash
+# Clone the repository
+git clone https://github.com/yunusserhat/geoai-vlm.git
+cd geoai-vlm
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/macOS
+# or: venv\Scripts\activate  # Windows
+
+# Install with constraints (required for dependency resolution)
+pip install . -c constraints.txt
+
+# For development (includes testing tools)
+pip install -e ".[dev]" -c constraints.txt
+```
+
+#### Using conda
+
+```bash
+# Clone the repository
+git clone https://github.com/yunusserhat/geoai-vlm.git
+cd geoai-vlm
+
+# Create and activate conda environment
+conda create -n geoai-vlm python=3.11 -y
+conda activate geoai-vlm
+
+# Install with constraints (required for dependency resolution)
+pip install . -c constraints.txt
+
+# For development
+pip install -e ".[dev]" -c constraints.txt
+```
+
+### Verify Installation
+
+```bash
+python -c "import geoai_vlm; print('GeoAI-VLM installed successfully!')"
+```
+
+## Quick Start
+
+### Basic Usage
+
+```python
+from geoai_vlm import describe_place
+
+# Describe images from a place name
+results = describe_place(
+    place_name="Sultanahmet, Istanbul",
+    mly_api_key="YOUR_MAPILLARY_API_KEY",
+    buffer_m=100,
+    output_path="sultanahmet_descriptions.parquet"
+)
+
+print(results.head())
+```
+
+### Point Query with Distance
+
+```python
+from geoai_vlm import describe_point
+
+# Query images near a specific coordinate
+results = describe_point(
+    lat=41.0082,
+    lon=28.9784,
+    buffer_m=50,
+    mly_api_key="YOUR_API_KEY",
+    output_path="hagia_sophia.parquet"
+)
+
+# Results include distance_to_query_m column
+print(results[['image_id', 'distance_to_query_m', 'scene_narrative']].head())
+```
+
+### Line Query (Street/Route Analysis)
+
+```python
+from geoai_vlm import describe_line
+from shapely.geometry import LineString
+
+# Analyze images along a street
+street_line = LineString([
+    (28.9700, 41.0100),  # Start point (lon, lat)
+    (28.9750, 41.0120),  # Midpoint
+    (28.9800, 41.0080),  # End point
+])
+
+results = describe_line(
+    geometry=street_line,
+    buffer_m=25,
+    mly_api_key="YOUR_API_KEY"
+)
+
+# Results include distance_to_line_m and distance_along_line_m
+```
+
+### Bounding Box Query
+
+```python
+from geoai_vlm import describe_bbox
+
+results = describe_bbox(
+    minx=28.970, miny=41.005,
+    maxx=28.985, maxy=41.015,
+    mly_api_key="YOUR_API_KEY",
+    model_name="Qwen/Qwen3-VL-2B-Instruct"
+)
+```
+
+### Custom Prompts
+
+```python
+from geoai_vlm import ImageDescriber, describe_place
+
+# Use custom system/user prompts
+custom_system = """You are an urban safety analyst. Describe safety-relevant features."""
+custom_user = """Analyze this street image for: lighting, visibility, foot traffic, escape routes."""
+
+results = describe_place(
+    query="Fatih, Istanbul",
+    mly_api_key="YOUR_API_KEY",
+    system_prompt=custom_system,
+    user_prompt=custom_user,
+    output_path="safety_analysis.parquet"
+)
+```
+
+### Using Different Backends
+
+```python
+from geoai_vlm import ImageDescriber
+
+# VLLM backend (default, fastest)
+describer = ImageDescriber(
+    model_name="Qwen/Qwen3-VL-2B-Instruct",
+    backend="vllm",
+    gpu_memory_utilization=0.8
+)
+
+# Transformers backend (fallback)
+describer = ImageDescriber(
+    model_name="Qwen/Qwen3-VL-2B-Instruct",
+    backend="transformers",
+    device="cuda"
+)
+
+# Describe images
+results = describer.describe(
+    image_dir="./my_images",
+    output_path="descriptions.parquet",
+    batch_size=8
+)
+```
+
+## Output Schema
+
+The default GeoAI schema extracts structured urban features:
+
+```python
+{
+    "scene_narrative": "80-120 word description of the urban scene",
+    "land_use_character": {"primary": "commercial", "intensity": "high"},
+    "urban_morphology": {"street_type": "pedestrian", "enclosure_ratio": "high"},
+    "streetscape_elements": {"sidewalk_quality": "good", "street_trees": "moderate"},
+    "mobility_infrastructure": {"modes_visible": ["pedestrian", "bicycle"]},
+    "place_character": {"dominant_activity": "shopping", "human_presence": "crowded"},
+    "environmental_quality": {"greenery_coverage": "moderate", "cleanliness": "good"},
+    "semantic_tags": ["historic", "tourist", "commercial", "pedestrian", "busy"]
+}
+```
+
+## GeoParquet Output
+
+Results are saved as GeoParquet with native geometry:
+
+```python
+import geopandas as gpd
+
+# Load results
+gdf = gpd.read_parquet("results.parquet")
+
+# Native geometry column preserved
+print(gdf.geometry)  # POINT geometries
+print(gdf.crs)       # EPSG:4326
+
+# Easy GIS operations
+gdf.to_file("results.geojson", driver="GeoJSON")
+gdf.explore()  # Interactive map in Jupyter
+```
+
+## Requirements
+
+- Python 3.9+
+- Mapillary API key ([get one here](https://www.mapillary.com/developer))
+- GPU recommended for VLM inference
+
+## Dependencies
+
+- **Core**: geopandas, pandas, shapely, pyarrow, haversine
+- **Downloading**: zensvi (Mapillary integration)
+- **VLM (choose one)**:
+  - VLLM + qwen-vl-utils (recommended)
+  - Transformers + torch + accelerate
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Citation
+
+If you use GeoAI-VLM in your research, please cite:
+
+```bibtex
+@software{geoai_vlm,
+  title = {GeoAI-VLM: Geospatial Vision-Language Model Analysis},
+  year = {2026},
+  url = {https://github.com/geoai-research/geoai-vlm}
+}
+```
+
+## Acknowledgments
+
+- [ZenSVI](https://github.com/koito19960406/ZenSVI) for Mapillary integration
+- [Qwen-VL](https://github.com/QwenLM/Qwen-VL) for vision-language models
+- [VLLM](https://github.com/vllm-project/vllm) for high-performance inference
