@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "GeoAI-VLM: Geospatial Vision-Language Model Analysis"
+abstract: "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
+authors:
+  - family-names: "Bıçakçı"
+    given-names: "Yunus Serhat"
+    email: "yunus.serhat@marmara.edu.tr"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+version: "0.1.1"
+date-released: 2026-01-06
+license: MIT
+repository-code: "https://github.com/yunusserhat/GeoAI-VLM"
+url: "https://github.com/yunusserhat/GeoAI-VLM"
+keywords:
+  - geoai
+  - street-view
+  - mapillary
+  - vision-language-model
+  - urban-analytics
+  - geospatial

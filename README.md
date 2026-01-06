@@ -267,9 +267,10 @@ If you use GeoAI-VLM in your research, please cite:
 
 ```bibtex
 @software{geoai_vlm,
+  author = {Bıçakçı, Yunus Serhat},
   title = {GeoAI-VLM: Geospatial Vision-Language Model Analysis},
   year = {2026},
-  url = {https://github.com/geoai-research/geoai-vlm}
+  url = {https://github.com/yunusserhat/GeoAI-VLM}
 }
 ```
 
