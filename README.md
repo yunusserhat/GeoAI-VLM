@@ -1,5 +1,11 @@
 # GeoAI-VLM
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18169685.svg)](https://doi.org/10.5281/zenodo.18169685)
+[![PyPI version](https://img.shields.io/pypi/v/geoai-vlm.svg)](https://pypi.org/project/geoai-vlm/)
+[![PyPI downloads](https://static.pepy.tech/badge/geoai-vlm)](https://pepy.tech/project/geoai-vlm)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/yunusserhat/GeoAI-VLM?style=social)](https://github.com/yunusserhat/GeoAI-VLM)
+
 **Geospatial Vision-Language Model analysis for street-level imagery.**
 
 GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) and a high-performance [vLLM](https://github.com/vllm-project/vllm) backend to generate structured descriptions of street-level images. It's designed for GeoAI research.
@@ -239,10 +245,12 @@ If you use GeoAI-VLM in your research, please cite:
 
 ```bibtex
 @software{geoai_vlm,
-  author = {Bıçakçı, Yunus Serhat},
-  title = {GeoAI-VLM: Geospatial Vision-Language Model Analysis},
-  year = {2026},
-  url = {https://github.com/yunusserhat/GeoAI-VLM}
+  author  = {B{\i}cak{\c{c}}{\i}, Yunus Serhat},
+  title   = {GeoAI-VLM: Geospatial Vision-Language Model Analysis},
+  year    = {2026},
+  publisher = {Zenodo},
+  doi     = {10.5281/zenodo.18169685},
+  url     = {https://github.com/yunusserhat/GeoAI-VLM}
 }
 ```
 
