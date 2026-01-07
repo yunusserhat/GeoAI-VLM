@@ -2,88 +2,60 @@
 
 **Geospatial Vision-Language Model analysis for street-level imagery.**
 
-GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) to generate structured descriptions of street-level images. It's designed for urban analytics, spatial clustering, and GeoAI research.
+GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) and a high-performance [vLLM](https://github.com/vllm-project/vllm) backend to generate structured descriptions of street-level images. It's designed for GeoAI research.
 
 ## Features
 
 - 🗺️ **Geospatial Queries**: Point, line, polygon, and bounding box queries with automatic buffering
 - 📸 **Mapillary Integration**: Download street-level imagery via ZenSVI
-- 🤖 **VLM Analysis**: Generate structured descriptions using Qwen-VL, LLaVA, and other models
+- 🤖 **VLM Analysis**: Generate structured descriptions using Qwen-VL, and other image-text-to-text models
 - 📊 **GeoParquet Output**: Native geometry columns for seamless GIS integration
 - 📏 **Distance Calculations**: Automatic distance-to-query computation using haversine
-- ⚡ **High Performance**: VLLM backend for fast batch inference (Transformers fallback available)
+- ⚡ **High Performance**: [vLLM](https://github.com/vllm-project/vllm) backend for fast batch inference ([Transformers](https://github.com/huggingface/transformers) fallback available)
 - 🔄 **Resume Support**: Skip already-processed images for incremental workflows
 
-## Requirements
 
-- Python 3.9 or higher
+## Requirements & Platform Support
+
+- Python 3.9-3.12 supported
+- **Windows is NOT supported** due to the [vLLM](https://github.com/vllm-project/vllm) dependency. Please use Linux or macOS.
 - CUDA-compatible GPU (recommended for VLM inference)
 - [Mapillary API key](https://www.mapillary.com/developer) for downloading street-level imagery
 
-## Installation
 
-### Option 1: Install from PyPI (when published)
+## Set up using Python
+
+### Create a new Python environment
+
+It's recommended to use [uv](https://github.com/astral-sh/uv), a very fast Python environment manager, to create and manage Python environments. Please follow the [documentation](https://docs.astral.sh/uv/#getting-started) to install uv. After installing uv, you can create a new Python environment using the following commands:
 
 ```bash
-pip install geoai-vlm -c https://raw.githubusercontent.com/yunusserhat/geoai-vlm/main/constraints.txt
+uv venv --python 3.12 --seed
+source .venv/bin/activate
+```
+
+## Installation
+
+### Option 1: Install from PyPI
+
+```bash
+uv pip install geoai-vlm
 ```
 
 ### Option 2: Install from GitHub
 
-#### Using uv (recommended, fastest)
-
 ```bash
 # Clone the repository
 git clone https://github.com/yunusserhat/geoai-vlm.git
 cd geoai-vlm
 
-# Create virtual environment and install
-uv venv
-source .venv/bin/activate  # Linux/macOS
-# or: .venv\Scripts\activate  # Windows
-
+# Install in the current environment
 uv pip install .
 
-# For development
+# For development (editable mode)
 uv pip install -e ".[dev]"
 ```
 
-#### Using pip + venv
-
-```bash
-# Clone the repository
-git clone https://github.com/yunusserhat/geoai-vlm.git
-cd geoai-vlm
-
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
-
-# Install with constraints (required for dependency resolution)
-pip install . -c constraints.txt
-
-# For development (includes testing tools)
-pip install -e ".[dev]" -c constraints.txt
-```
-
-#### Using conda
-
-```bash
-# Clone the repository
-git clone https://github.com/yunusserhat/geoai-vlm.git
-cd geoai-vlm
-
-# Create and activate conda environment
-conda create -n geoai-vlm python=3.11 -y
-conda activate geoai-vlm
-
-# Install with constraints (required for dependency resolution)
-pip install . -c constraints.txt
-
-# For development
-pip install -e ".[dev]" -c constraints.txt
-```
 
 ### Verify Installation
 
@@ -245,7 +217,7 @@ gdf.explore()  # Interactive map in Jupyter
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.9-3.12 supported
 - Mapillary API key ([get one here](https://www.mapillary.com/developer))
 - GPU recommended for VLM inference
 
@@ -254,7 +226,7 @@ gdf.explore()  # Interactive map in Jupyter
 - **Core**: geopandas, pandas, shapely, pyarrow, haversine
 - **Downloading**: zensvi (Mapillary integration)
 - **VLM (choose one)**:
-  - VLLM + qwen-vl-utils (recommended)
+  - vLLM + qwen-vl-utils (recommended)
   - Transformers + torch + accelerate
 
 ## License
@@ -278,4 +250,4 @@ If you use GeoAI-VLM in your research, please cite:
 
 - [ZenSVI](https://github.com/koito19960406/ZenSVI) for Mapillary integration
 - [Qwen-VL](https://github.com/QwenLM/Qwen-VL) for vision-language models
-- [VLLM](https://github.com/vllm-project/vllm) for high-performance inference
+- [vLLM](https://github.com/vllm-project/vllm) for high-performance inference

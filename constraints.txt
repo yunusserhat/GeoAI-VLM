@@ -1,4 +1,0 @@
-# Override constraints for dependency conflicts
-# zensvi requires older versions, but we need newer ones for vllm/transformers
-huggingface-hub>=0.34.0
-attrs>=22.2.0

@@ -7,9 +7,9 @@ authors:
   - family-names: "Bıçakçı"
     given-names: "Yunus Serhat"
     email: "yunus.serhat@marmara.edu.tr"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
-version: "0.1.1"
-date-released: 2026-01-06
+    orcid: "https://orcid.org/0000-0002-7288-9959"
+version: "0.1.2"
+date-released: 2026-01-07
 license: MIT
 repository-code: "https://github.com/yunusserhat/GeoAI-VLM"
 url: "https://github.com/yunusserhat/GeoAI-VLM"
