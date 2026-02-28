@@ -8,9 +8,11 @@
 
 **Geospatial Vision-Language Model analysis for street-level imagery.**
 
-GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) and a high-performance [vLLM](https://github.com/vllm-project/vllm) backend to generate structured descriptions of street-level images. It's designed for GeoAI research.
+GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) and a high-performance [vLLM](https://github.com/vllm-project/vllm) backend to generate structured descriptions of street-level images. Starting with v0.2.0, GeoAI-VLM also supports **multimodal embedding** with [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B), enabling **semantic clustering**, **spatial autocorrelation analysis**, and **vector similarity search** over geotagged imagery. It's designed for GeoAI research.
 
 ## Features
+
+### Core
 
 - 🗺️ **Geospatial Queries**: Point, line, polygon, and bounding box queries with automatic buffering
 - 📸 **Mapillary Integration**: Download street-level imagery via ZenSVI
@@ -19,6 +21,14 @@ GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary
 - 📏 **Distance Calculations**: Automatic distance-to-query computation using haversine
 - ⚡ **High Performance**: [vLLM](https://github.com/vllm-project/vllm) backend for fast batch inference ([Transformers](https://github.com/huggingface/transformers) fallback available)
 - 🔄 **Resume Support**: Skip already-processed images for incremental workflows
+
+### Embedding & Analysis (v0.2.0)
+
+- 🧬 **Multimodal Embeddings**: Generate dense vector representations from text and images using [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) (2B & 8B variants)
+- 🔍 **Vector Search**: Build searchable indices with ChromaDB or FAISS and retrieve semantically similar places by text or image query
+- 📈 **Semantic Clustering**: K-Means clustering over embeddings with automatic keyword extraction per cluster
+- 🌐 **Spatial Autocorrelation**: Global and local Moran's I to detect spatial patterns in cluster assignments
+- 📉 **Visualization**: Elbow curves, cluster maps, LISA significance maps, category distributions, and full HTML reports
 
 
 ## Requirements & Platform Support
@@ -202,6 +212,150 @@ The default GeoAI schema extracts structured urban features:
 }
 ```
 
+## Multimodal Embeddings
+
+Generate dense vector representations from VLM descriptions and street-level images using [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B):
+
+```python
+from geoai_vlm import ImageEmbedder
+
+# Initialize the embedder (auto-selects vLLM or Transformers backend)
+embedder = ImageEmbedder(
+    model_name="Qwen/Qwen3-Embedding-0.6B",
+    backend="auto"
+)
+
+# Embed text descriptions
+vectors = embedder.embed_texts(["A busy commercial street with shops"])
+print(vectors.shape)  # (1, hidden_dim)
+
+# Embed images directly
+img_vectors = embedder.embed_images(["path/to/image.jpg"])
+
+# Multimodal: combine text + image into a single embedding
+mm_vectors = embedder.embed_multimodal(
+    texts=["A quiet residential area"],
+    image_paths=["path/to/image.jpg"]
+)
+```
+
+## Semantic Clustering
+
+Cluster geotagged descriptions by semantic similarity and extract per-cluster keywords:
+
+```python
+from geoai_vlm import SemanticClusterer, ClusterConfig
+
+config = ClusterConfig(
+    n_clusters=8,
+    embedding_columns=["scene_narrative", "semantic_tags"],
+    n_keywords=10
+)
+clusterer = SemanticClusterer(embedder=embedder, config=config)
+
+# Cluster a GeoDataFrame of VLM descriptions
+gdf = clusterer.cluster(gdf)
+print(gdf["cluster"].value_counts())
+
+# Find the optimal number of clusters
+k_values, inertias = clusterer.find_optimal_k(gdf, k_range=range(2, 20))
+
+# Extract TF-IDF keywords per cluster
+keywords = clusterer.extract_keywords(gdf)
+for cluster_id, words in keywords.items():
+    print(f"Cluster {cluster_id}: {words}")
+```
+
+## Spatial Autocorrelation
+
+Detect whether semantic clusters are spatially random or form significant patterns:
+
+```python
+from geoai_vlm import SpatialAnalyzer
+
+analyzer = SpatialAnalyzer(k_neighbors=8)
+
+# Global Moran's I — is there overall spatial clustering?
+global_result = analyzer.moran_global(gdf, column="cluster")
+print(f"Moran's I = {global_result.I:.3f}, p = {global_result.p_sim:.4f}")
+
+# Local Moran's I (LISA) — where are the hot/cold spots?
+gdf = analyzer.moran_local(gdf, column="cluster")
+# Adds 'lisa_Is', 'lisa_q', 'lisa_p_sim' columns to the GeoDataFrame
+```
+
+## Vector Similarity Search
+
+Build a searchable index over your geotagged descriptions and find semantically similar places:
+
+```python
+from geoai_vlm import VectorDB
+
+# Build an index from a GeoDataFrame
+vdb = VectorDB(embedder=embedder, store_backend="chromadb")
+vdb.build(
+    gdf,
+    text_column="scene_narrative",
+    image_dir="./images",
+    metadata_columns=["land_use_character", "cluster"]
+)
+
+# Search by natural language
+results = vdb.search(query_text="tree-lined residential street", n_results=5)
+print(results[["scene_narrative", "distance"]])
+
+# Search by image
+results = vdb.search(query_image="query_photo.jpg", n_results=5)
+```
+
+## Visualization
+
+```python
+from geoai_vlm import (
+    plot_elbow_curve,
+    plot_cluster_map,
+    plot_lisa_map,
+    plot_category_distribution,
+    generate_report
+)
+
+# Elbow curve for choosing k
+plot_elbow_curve(k_values, inertias, save_path="elbow.png")
+
+# Map of clusters
+plot_cluster_map(gdf, cluster_column="cluster", save_path="clusters.png")
+
+# LISA significance map
+plot_lisa_map(gdf, save_path="lisa.png")
+
+# Category breakdown
+plot_category_distribution(gdf, category_columns=["land_use_character"])
+
+# Full HTML report
+generate_report(gdf, output_dir="./report")
+```
+
+## One-Line Pipeline
+
+Run the entire workflow — download, describe, embed, cluster, analyze — in a single call:
+
+```python
+from geoai_vlm import embed_place, cluster_descriptions, analyze_spatial
+
+# 1. Download + embed
+gdf = embed_place(
+    place_name="Sultanahmet, Istanbul",
+    mly_api_key="YOUR_API_KEY",
+    embedding_model="Qwen/Qwen3-Embedding-0.6B"
+)
+
+# 2. Cluster
+gdf = cluster_descriptions(gdf, n_clusters=8)
+
+# 3. Spatial analysis
+gdf = analyze_spatial(gdf, column="cluster", k_neighbors=8)
+```
+
 ## GeoParquet Output
 
 Results are saved as GeoParquet with native geometry:
@@ -225,7 +379,7 @@ gdf.explore()  # Interactive map in Jupyter
 
 - Python 3.9-3.12 supported
 - Mapillary API key ([get one here](https://www.mapillary.com/developer))
-- GPU recommended for VLM inference
+- GPU recommended for VLM inference and embedding generation
 
 ## Dependencies
 
@@ -234,6 +388,7 @@ gdf.explore()  # Interactive map in Jupyter
 - **VLM (choose one)**:
   - vLLM + qwen-vl-utils (recommended)
   - Transformers + torch + accelerate
+- **Embedding & Analysis**: chromadb, faiss-cpu, scikit-learn, matplotlib, libpysal, esda
 
 ## License
 
@@ -258,4 +413,7 @@ If you use GeoAI-VLM in your research, please cite:
 
 - [ZenSVI](https://github.com/koito19960406/ZenSVI) for Mapillary integration
 - [Qwen-VL](https://github.com/QwenLM/Qwen-VL) for vision-language models
+- [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) for multimodal embeddings
 - [vLLM](https://github.com/vllm-project/vllm) for high-performance inference
+- [ChromaDB](https://github.com/chroma-core/chroma) and [FAISS](https://github.com/facebookresearch/faiss) for vector search
+- [PySAL](https://pysal.org/) for spatial statistics
