@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geoai-vlm"
-version = "0.2.0"
+version = "0.2.1"
 description = "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
 readme = "README.md"
 license = {text = "MIT"}

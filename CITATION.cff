@@ -8,7 +8,7 @@ authors:
     given-names: "Yunus Serhat"
     email: "yunus.serhat@marmara.edu.tr"
     orcid: "https://orcid.org/0000-0002-7288-9959"
-version: "0.2.0"
+version: "0.2.1"
 date-released: 2026-02-28
 license: MIT
 doi: 10.5281/zenodo.18169685
