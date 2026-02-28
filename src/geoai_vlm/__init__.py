@@ -12,6 +12,8 @@ Features:
 - GeoParquet output with native geometry columns
 - Automatic distance calculations (haversine)
 - Resume support for incremental processing
+- Multimodal embedding (Qwen3-VL-Embedding) with vector search
+- Semantic clustering with spatial autocorrelation analysis
 
 Example:
     >>> from geoai_vlm import describe_place
@@ -22,7 +24,7 @@ Example:
     ... )
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "GeoAI Research"
 
 # Core classes
@@ -56,6 +58,11 @@ from .pipeline import (
     describe_line,
     describe_bbox,
     describe_polygon,
+    embed_place,
+    cluster_descriptions,
+    analyze_spatial,
+    build_search_index,
+    search_similar,
 )
 from .prompts import (
     GEOAI_SYSTEM_PROMPT,
@@ -65,6 +72,25 @@ from .prompts import (
     SIMPLE_USER_PROMPT,
     get_prompt_template,
     create_custom_prompt,
+)
+
+# New modules – embedding, vector store, clustering, spatial, visualization, preparation
+from .embedding import ImageEmbedder, TransformersEmbeddingBackend, VLLMEmbeddingBackend
+from .vectorstore import VectorDB, ChromaVectorStore, FAISSVectorStore
+from .clustering import SemanticClusterer, ClusterConfig
+from .spatial import SpatialAnalyzer, MoranResult
+from .visualization import (
+    plot_elbow_curve,
+    plot_cluster_map,
+    plot_lisa_map,
+    plot_category_distribution,
+    generate_report,
+)
+from .preparation import (
+    parse_vlm_descriptions,
+    merge_data_sources,
+    extract_image_id,
+    build_embedding_text,
 )
 
 
@@ -79,6 +105,13 @@ __all__ = [
     "describe_bbox",
     "describe_polygon",
     "describe_query",
+    
+    # New pipeline functions
+    "embed_place",
+    "cluster_descriptions",
+    "analyze_spatial",
+    "build_search_index",
+    "search_similar",
     
     # Core classes
     "ImageDescriber",
@@ -95,6 +128,37 @@ __all__ = [
     # Backends
     "VLLMBackend",
     "TransformersBackend",
+    
+    # Embedding
+    "ImageEmbedder",
+    "TransformersEmbeddingBackend",
+    "VLLMEmbeddingBackend",
+    
+    # Vector store
+    "VectorDB",
+    "ChromaVectorStore",
+    "FAISSVectorStore",
+    
+    # Clustering
+    "SemanticClusterer",
+    "ClusterConfig",
+    
+    # Spatial analysis
+    "SpatialAnalyzer",
+    "MoranResult",
+    
+    # Visualization
+    "plot_elbow_curve",
+    "plot_cluster_map",
+    "plot_lisa_map",
+    "plot_category_distribution",
+    "generate_report",
+    
+    # Data preparation
+    "parse_vlm_descriptions",
+    "merge_data_sources",
+    "extract_image_id",
+    "build_embedding_text",
     
     # I/O functions
     "save_geoparquet",

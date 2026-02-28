@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geoai-vlm"
-version = "0.1.4"
+version = "0.2.0"
 description = "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
 readme = "README.md"
 license = {text = "MIT"}
@@ -20,7 +20,12 @@ keywords = [
     "vision-language-model",
     "urban-analytics",
     "geospatial",
-    "geoparquet"
+    "geoparquet",
+    "embedding",
+    "clustering",
+    "spatial-analysis",
+    "vector-search",
+    "multimodal",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -53,6 +58,14 @@ dependencies = [
     "transformers>=4.57.3",
     "torch>=2.9.0",
     "accelerate>=1.12.0",
+    # Embedding & vector search
+    "chromadb>=1.0.0",
+    "faiss-cpu>=1.7.0",
+    # Clustering & spatial analysis
+    "scikit-learn>=1.4.0",
+    "matplotlib>=3.8.0",
+    "libpysal>=4.9.0",
+    "esda>=2.5.0",
 ]
 
 [project.optional-dependencies]

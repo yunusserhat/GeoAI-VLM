@@ -23,7 +23,7 @@ from .geometry import (
     PointQuery,
     PolygonQuery,
 )
-from .io import merge_metadata_and_descriptions, save_geoparquet, to_geodataframe
+from .io import load_geoparquet, merge_metadata_and_descriptions, save_geoparquet, to_geodataframe
 
 
 __all__ = [
@@ -33,6 +33,11 @@ __all__ = [
     "describe_bbox",
     "describe_polygon",
     "describe_query",
+    "embed_place",
+    "cluster_descriptions",
+    "analyze_spatial",
+    "build_search_index",
+    "search_similar",
 ]
 
 
@@ -389,4 +394,204 @@ def describe_polygon(
         mly_api_key=mly_api_key,
         output_dir=output_dir,
         **kwargs,
+    )
+
+
+# =========================================================================
+# New high-level functions – embedding, clustering & spatial analysis
+# =========================================================================
+
+
+def embed_place(
+    place_name: str,
+    mly_api_key: str,
+    model_name: str = "Qwen/Qwen3-VL-Embedding-2B",
+    embedding_backend: str = "auto",
+    output_dir: Optional[Union[str, Path]] = None,
+    buffer_m: float = 0,
+    max_images: Optional[int] = None,
+    **kwargs,
+) -> gpd.GeoDataFrame:
+    """
+    Download, describe **and embed** images from a place name.
+
+    Extends :func:`describe_place` by additionally generating multimodal
+    embeddings for every image, stored in a NumPy-friendly column.
+
+    Args:
+        place_name: OSM-compatible place name.
+        mly_api_key: Mapillary API key.
+        model_name: Embedding model name.
+        embedding_backend: ``"vllm"``, ``"transformers"`` or ``"auto"``.
+        output_dir: Output directory.
+        buffer_m: Buffer in metres.
+        max_images: Maximum images to process.
+        **kwargs: Forwarded to :func:`describe_query`.
+
+    Returns:
+        GeoDataFrame with VLM descriptions and an ``embedding`` column.
+    """
+    from .embedding import ImageEmbedder
+
+    gdf = describe_place(
+        place_name=place_name,
+        mly_api_key=mly_api_key,
+        output_dir=output_dir,
+        buffer_m=buffer_m,
+        max_images=max_images,
+        **kwargs,
+    )
+
+    if len(gdf) == 0:
+        return gdf
+
+    embedder = ImageEmbedder(model_name=model_name, backend=embedding_backend)
+
+    # Embed the text descriptions
+    texts = gdf["scene_narrative"].fillna("").tolist()
+    embeddings = embedder.embed_texts(texts)
+    gdf["embedding"] = list(embeddings)
+
+    return gdf
+
+
+def cluster_descriptions(
+    gdf_or_path: Union[gpd.GeoDataFrame, str, Path],
+    n_clusters: Optional[int] = 10,
+    embedding_model: str = "Qwen/Qwen3-VL-Embedding-2B",
+    embedding_backend: str = "auto",
+    embedding_columns: Optional[list] = None,
+    random_state: int = 42,
+) -> gpd.GeoDataFrame:
+    """
+    Cluster VLM descriptions in a GeoDataFrame and return enriched results.
+
+    Args:
+        gdf_or_path: A GeoDataFrame or path to a GeoParquet file.
+        n_clusters: Number of clusters (``None`` for auto-elbow).
+        embedding_model: HuggingFace model for embedding.
+        embedding_backend: ``"vllm"``, ``"transformers"`` or ``"auto"``.
+        embedding_columns: Columns to join for embedding text.
+        random_state: Random seed.
+
+    Returns:
+        GeoDataFrame with ``cluster`` and ``embedding_text`` columns.
+    """
+    from .clustering import ClusterConfig, SemanticClusterer
+    from .embedding import ImageEmbedder
+
+    if isinstance(gdf_or_path, (str, Path)):
+        gdf = load_geoparquet(Path(gdf_or_path))
+    else:
+        gdf = gdf_or_path
+
+    config = ClusterConfig(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        embedding_columns=embedding_columns
+        or ["scene_narrative", "semantic_tags", "place_character"],
+    )
+    embedder = ImageEmbedder(model_name=embedding_model, backend=embedding_backend)
+    clusterer = SemanticClusterer(embedder=embedder, config=config)
+
+    gdf = gdf.copy()
+    gdf["embedding_text"] = clusterer.build_embedding_text(gdf)
+    gdf = clusterer.cluster(gdf, n_clusters=n_clusters)
+
+    return gdf
+
+
+def analyze_spatial(
+    gdf: gpd.GeoDataFrame,
+    column: str = "cluster",
+    k_neighbors: int = 8,
+) -> dict:
+    """
+    Run Global & Local Moran's I on a clustered GeoDataFrame.
+
+    Args:
+        gdf: GeoDataFrame with a *column* of cluster labels.
+        column: Name of the cluster column.
+        k_neighbors: Neighbours for KNN weight matrix.
+
+    Returns:
+        Dict with ``global`` (:class:`~geoai_vlm.spatial.MoranResult` per cluster)
+        and ``gdf`` (enriched with LISA columns).
+    """
+    from .spatial import SpatialAnalyzer
+
+    sa = SpatialAnalyzer(k_neighbors=k_neighbors)
+    global_results = sa.moran_global(gdf, column=column)
+    lisa_gdf = sa.moran_local(gdf, column=column)
+
+    return {"global": global_results, "gdf": lisa_gdf}
+
+
+def build_search_index(
+    gdf_or_path: Union[gpd.GeoDataFrame, str, Path],
+    embedding_model: str = "Qwen/Qwen3-VL-Embedding-2B",
+    embedding_backend: str = "auto",
+    store_backend: str = "chromadb",
+    text_column: str = "scene_narrative",
+    image_dir: Optional[Union[str, Path]] = None,
+    metadata_columns: Optional[list] = None,
+    **store_kwargs,
+):
+    """
+    Build a searchable vector index from pipeline output.
+
+    Args:
+        gdf_or_path: GeoDataFrame or path to GeoParquet.
+        embedding_model: HuggingFace embedding model name.
+        embedding_backend: ``"vllm"``, ``"transformers"`` or ``"auto"``.
+        store_backend: ``"chromadb"`` or ``"faiss"``.
+        text_column: Column with text to embed.
+        image_dir: Directory with original images for multimodal embedding.
+        metadata_columns: Extra metadata columns to store.
+        **store_kwargs: Forwarded to the vector store backend.
+
+    Returns:
+        A :class:`~geoai_vlm.vectorstore.VectorDB` instance with a populated store.
+    """
+    from .embedding import ImageEmbedder
+    from .vectorstore import VectorDB
+
+    if isinstance(gdf_or_path, (str, Path)):
+        gdf = load_geoparquet(Path(gdf_or_path))
+    else:
+        gdf = gdf_or_path
+
+    embedder = ImageEmbedder(model_name=embedding_model, backend=embedding_backend)
+    vdb = VectorDB(embedder=embedder, store_backend=store_backend, **store_kwargs)
+    vdb.build(
+        gdf,
+        text_column=text_column,
+        image_dir=image_dir,
+        metadata_columns=metadata_columns,
+    )
+    return vdb
+
+
+def search_similar(
+    vector_db,
+    query_text: Optional[str] = None,
+    query_image: Optional[Union[str, Path]] = None,
+    n_results: int = 10,
+):
+    """
+    Search a vector index for similar items.
+
+    Args:
+        vector_db: A :class:`~geoai_vlm.vectorstore.VectorDB` instance.
+        query_text: Text query string.
+        query_image: Path to a query image.
+        n_results: Number of results.
+
+    Returns:
+        DataFrame with ``id``, ``distance`` and stored metadata columns.
+    """
+    return vector_db.search(
+        query_text=query_text,
+        query_image=query_image,
+        n_results=n_results,
     )

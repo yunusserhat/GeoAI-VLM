@@ -8,8 +8,8 @@ authors:
     given-names: "Yunus Serhat"
     email: "yunus.serhat@marmara.edu.tr"
     orcid: "https://orcid.org/0000-0002-7288-9959"
-version: "0.1.4"
-date-released: 2026-01-07
+version: "0.2.0"
+date-released: 2026-02-28
 license: MIT
 doi: 10.5281/zenodo.18169685
 repository-code: "https://github.com/yunusserhat/GeoAI-VLM"
@@ -21,3 +21,8 @@ keywords:
   - vision-language-model
   - urban-analytics
   - geospatial
+  - embedding
+  - clustering
+  - spatial-analysis
+  - vector-search
+  - multimodal
