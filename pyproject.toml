@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geoai-vlm"
-version = "0.2.1"
+version = "0.2.2"
 description = "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Yunus Serhat Bıçakçı", email = "yunus.serhat@marmara.edu.tr"},
     {name = "Yunus Serhat Bıçakçı", email = "yunusserhat.bicakci@glasgow.ac.uk"}
@@ -30,7 +30,7 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",

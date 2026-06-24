@@ -3,7 +3,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18169685.svg)](https://doi.org/10.5281/zenodo.18169685)
 [![PyPI version](https://img.shields.io/pypi/v/geoai-vlm.svg)](https://pypi.org/project/geoai-vlm/)
 [![PyPI downloads](https://static.pepy.tech/badge/geoai-vlm)](https://pepy.tech/project/geoai-vlm)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![GitHub stars](https://img.shields.io/github/stars/yunusserhat/GeoAI-VLM?style=social)](https://github.com/yunusserhat/GeoAI-VLM)
 
 **Geospatial Vision-Language Model analysis for street-level imagery.**
@@ -392,7 +392,7 @@ gdf.explore()  # Interactive map in Jupyter
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
 
 ## Citation
 
