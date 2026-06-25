@@ -24,7 +24,7 @@ Example:
     ... )
 """
 
-__version__ = "0.2.2"
+__version__ = "0.3"
 __author__ = "GeoAI Research"
 
 # Core classes
@@ -79,6 +79,55 @@ from .embedding import ImageEmbedder, TransformersEmbeddingBackend, VLLMEmbeddin
 from .vectorstore import VectorDB, ChromaVectorStore, FAISSVectorStore
 from .clustering import SemanticClusterer, ClusterConfig
 from .spatial import SpatialAnalyzer, MoranResult
+from .slope import (
+    DEFAULT_SEGMENTATION_MODEL,
+    DEFAULT_ROAD_CLASS_IDS,
+    ImageSlopeEstimator,
+    SlopeConfig,
+    SlopeResult,
+    aggregate_pano_slopes,
+    angle_difference,
+    compute_signed_slope,
+    create_road_mask,
+    estimate_image_slope,
+    estimate_slope_from_mask,
+    estimate_slope_from_semantic_map,
+    estimate_slopes_from_images,
+    extract_pano_id,
+    extract_perspective_angle,
+    extract_road_edge,
+    fit_road_edge_line,
+)
+from .vision2slope import (
+    AnalysisConfig,
+    CorrectionProvider,
+    DetectionConfig,
+    GSVDownloader,
+    ImageCorrector,
+    ImageProcessor,
+    ModelConfig,
+    PanoramaTransformer,
+    PipelineConfig,
+    ProcessingConfig,
+    ProcessingError,
+    ProcessingResult,
+    ProcessingStage,
+    ProcessingStatus,
+    SegmentationModel,
+    SegmentationProvider,
+    SkewDetectionProvider,
+    SkewDetector,
+    SlopeAnalysisProvider,
+    StandardImageProcessor,
+    Utils,
+    Vision2SlopeException,
+    Vision2SlopePipeline,
+    VisualizationConfig,
+    VisualizationProvider,
+    Visualizer,
+    ConfigurationError,
+    RoadSlopeAnalyzer,
+)
 from .visualization import (
     plot_elbow_curve,
     plot_cluster_map,
@@ -146,6 +195,55 @@ __all__ = [
     # Spatial analysis
     "SpatialAnalyzer",
     "MoranResult",
+
+    # Road slope estimation
+    "SlopeConfig",
+    "SlopeResult",
+    "ImageSlopeEstimator",
+    "DEFAULT_SEGMENTATION_MODEL",
+    "DEFAULT_ROAD_CLASS_IDS",
+    "create_road_mask",
+    "extract_road_edge",
+    "fit_road_edge_line",
+    "estimate_slope_from_mask",
+    "estimate_slope_from_semantic_map",
+    "estimate_image_slope",
+    "estimate_slopes_from_images",
+    "compute_signed_slope",
+    "aggregate_pano_slopes",
+    "angle_difference",
+    "extract_pano_id",
+    "extract_perspective_angle",
+
+    # Full Vision2Slope pipeline
+    "Vision2SlopePipeline",
+    "PipelineConfig",
+    "ModelConfig",
+    "DetectionConfig",
+    "AnalysisConfig",
+    "VisualizationConfig",
+    "ProcessingConfig",
+    "StandardImageProcessor",
+    "SegmentationModel",
+    "SkewDetector",
+    "ImageCorrector",
+    "RoadSlopeAnalyzer",
+    "Visualizer",
+    "Utils",
+    "PanoramaTransformer",
+    "GSVDownloader",
+    "ImageProcessor",
+    "SegmentationProvider",
+    "SkewDetectionProvider",
+    "CorrectionProvider",
+    "SlopeAnalysisProvider",
+    "VisualizationProvider",
+    "Vision2SlopeException",
+    "ConfigurationError",
+    "ProcessingError",
+    "ProcessingResult",
+    "ProcessingStatus",
+    "ProcessingStage",
     
     # Visualization
     "plot_elbow_curve",

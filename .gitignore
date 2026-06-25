@@ -87,6 +87,7 @@ Thumbs.db
 data/
 output/
 models/
+external/
 *.parquet
 *.geoparquet
 

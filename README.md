@@ -8,7 +8,7 @@
 
 **Geospatial Vision-Language Model analysis for street-level imagery.**
 
-GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) and a high-performance [vLLM](https://github.com/vllm-project/vllm) backend to generate structured descriptions of street-level images. Starting with v0.2.0, GeoAI-VLM also supports **multimodal embedding** with [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B), enabling **semantic clustering**, **spatial autocorrelation analysis**, and **vector similarity search** over geotagged imagery. It's designed for GeoAI research.
+GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary downloading capabilities with Vision-Language Models (VLMs) and a high-performance [vLLM](https://github.com/vllm-project/vllm) backend to generate structured descriptions of street-level images. Starting with v0.2.0, GeoAI-VLM also supports **multimodal embedding** with [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B), enabling **semantic clustering**, **spatial autocorrelation analysis**, and **vector similarity search** over geotagged imagery. Starting with v0.3, it also includes **road slope estimation** inspired by [Vision2Slope](https://github.com/CubicsYang/Vision2Slope). It's designed for GeoAI research.
 
 ## Features
 
@@ -19,6 +19,7 @@ GeoAI-VLM combines [ZenSVI](https://github.com/koito19960406/ZenSVI)'s Mapillary
 - 🤖 **VLM Analysis**: Generate structured descriptions using Qwen-VL, and other image-text-to-text models
 - 📊 **GeoParquet Output**: Native geometry columns for seamless GIS integration
 - 📏 **Distance Calculations**: Automatic distance-to-query computation using haversine
+- 🛣️ **Road Slope Estimation**: Estimate road edge angle from Mapillary semantic segmentation maps or directly from images
 - ⚡ **High Performance**: [vLLM](https://github.com/vllm-project/vllm) backend for fast batch inference ([Transformers](https://github.com/huggingface/transformers) fallback available)
 - 🔄 **Resume Support**: Skip already-processed images for incremental workflows
 
@@ -212,6 +213,73 @@ The default GeoAI schema extracts structured urban features:
 }
 ```
 
+## Road Slope Estimation (v0.3)
+
+Estimate road slope from a Mapillary Vistas semantic segmentation map:
+
+```python
+from geoai_vlm import SlopeConfig, estimate_slope_from_semantic_map
+
+result = estimate_slope_from_semantic_map(
+    semantic_map,
+    config=SlopeConfig(morphology_kernel_size=15, min_edge_points=10)
+)
+
+print(result.road_edge_line_angle)  # road edge angle in degrees
+```
+
+Or estimate directly from an image using the default Mask2Former Mapillary Vistas model:
+
+```python
+from geoai_vlm import ImageSlopeEstimator
+
+estimator = ImageSlopeEstimator()
+result = estimator.estimate("street_view.jpg")
+
+print(result.to_dict())
+```
+
+The complete Vision2Slope pipeline is also available inside GeoAI-VLM:
+
+```python
+from geoai_vlm import (
+    PipelineConfig,
+    ProcessingConfig,
+    VisualizationConfig,
+    Vision2SlopePipeline,
+)
+
+config = PipelineConfig(
+    input_dir="street_view_images",
+    output_dir="slope_output",
+    processing_config=ProcessingConfig(
+        is_panorama=True,
+        panorama_fov=90,
+        panorama_phi=0.0,
+        panorama_aspects=(10, 10),
+    ),
+    viz_config=VisualizationConfig(
+        save_visualizations=True,
+        save_corrected_images=True,
+        save_intermediate_results=True,
+    ),
+)
+
+pipeline = Vision2SlopePipeline(config)
+slope_results = pipeline.process_batch()
+```
+
+All original Vision2Slope modules are vendored under `geoai_vlm.vision2slope`, including panorama transformation, semantic segmentation, skew correction, road-edge fitting, visualization, CLI, and optional Google Street View downloading.
+
+For panorama left/right perspective outputs, aggregate image-level measurements into a panorama-level slope:
+
+```python
+from geoai_vlm import aggregate_pano_slopes
+
+slope_df = aggregate_pano_slopes(results_df, angle_threshold=10)
+print(slope_df[["pano_id", "road_estimated_slope"]].drop_duplicates())
+```
+
 ## Multimodal Embeddings
 
 Generate dense vector representations from VLM descriptions and street-level images using [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B):
@@ -389,6 +457,7 @@ gdf.explore()  # Interactive map in Jupyter
   - vLLM + qwen-vl-utils (recommended)
   - Transformers + torch + accelerate
 - **Embedding & Analysis**: chromadb, faiss-cpu, scikit-learn, matplotlib, libpysal, esda
+- **Slope Estimation / Vision2Slope**: transformers, torch, Pillow, scikit-learn, scikit-image, opencv-python, zensvi, streetlevel
 
 ## License
 
@@ -412,6 +481,7 @@ If you use GeoAI-VLM in your research, please cite:
 ## Acknowledgments
 
 - [ZenSVI](https://github.com/koito19960406/ZenSVI) for Mapillary integration
+- [Vision2Slope](https://github.com/CubicsYang/Vision2Slope) for the road slope estimation workflow
 - [Qwen-VL](https://github.com/QwenLM/Qwen-VL) for vision-language models
 - [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) for multimodal embeddings
 - [vLLM](https://github.com/vllm-project/vllm) for high-performance inference

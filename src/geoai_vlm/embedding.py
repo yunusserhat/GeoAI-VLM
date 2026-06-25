@@ -175,7 +175,8 @@ class TransformersEmbeddingBackend(BaseEmbeddingBackend):
             {"role": "user", "content": content},
         ]
 
-    def _last_token_pool(self, hidden_states, attention_mask):
+    @staticmethod
+    def _last_token_pool(hidden_states, attention_mask):
         """Extract the last non-padding token's hidden state."""
         import torch
 
