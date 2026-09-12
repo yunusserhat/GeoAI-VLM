@@ -98,36 +98,72 @@ from .slope import (
     extract_road_edge,
     fit_road_edge_line,
 )
-from .vision2slope import (
-    AnalysisConfig,
-    CorrectionProvider,
-    DetectionConfig,
-    GSVDownloader,
-    ImageCorrector,
-    ImageProcessor,
-    ModelConfig,
-    PanoramaTransformer,
-    PipelineConfig,
-    ProcessingConfig,
-    ProcessingError,
-    ProcessingResult,
-    ProcessingStage,
-    ProcessingStatus,
-    SegmentationModel,
-    SegmentationProvider,
-    SkewDetectionProvider,
-    SkewDetector,
-    SlopeAnalysisProvider,
-    StandardImageProcessor,
-    Utils,
-    Vision2SlopeException,
-    Vision2SlopePipeline,
-    VisualizationConfig,
-    VisualizationProvider,
-    Visualizer,
-    ConfigurationError,
-    RoadSlopeAnalyzer,
+# ---------------------------------------------------------------------------
+# Vision2Slope is imported lazily (PEP 562).
+#
+# The slope pipeline pulls in the heavy vision stack (cv2, torch,
+# transformers, scikit-image, zensvi). Importing it eagerly made every core
+# data operation -- geospatial queries, GeoParquet I/O, description parsing,
+# clustering -- unusable without a full GPU-capable install. These names stay
+# in the public API and resolve on first attribute access instead.
+# ---------------------------------------------------------------------------
+_VISION2SLOPE_EXPORTS = frozenset(
+    {
+        "AnalysisConfig",
+        "CorrectionProvider",
+        "DetectionConfig",
+        "GSVDownloader",
+        "ImageCorrector",
+        "ImageProcessor",
+        "ModelConfig",
+        "PanoramaTransformer",
+        "PipelineConfig",
+        "ProcessingConfig",
+        "ProcessingError",
+        "ProcessingResult",
+        "ProcessingStage",
+        "ProcessingStatus",
+        "SegmentationModel",
+        "SegmentationProvider",
+        "SkewDetectionProvider",
+        "SkewDetector",
+        "SlopeAnalysisProvider",
+        "StandardImageProcessor",
+        "Utils",
+        "Vision2SlopeException",
+        "Vision2SlopePipeline",
+        "VisualizationConfig",
+        "VisualizationProvider",
+        "Visualizer",
+        "ConfigurationError",
+        "RoadSlopeAnalyzer",
+    }
 )
+
+
+def __getattr__(name):  # noqa: D103 - module level lazy attribute access
+    """Resolve Vision2Slope exports on demand (PEP 562)."""
+    if name in _VISION2SLOPE_EXPORTS:
+        from importlib import import_module
+
+        try:
+            module = import_module('.vision2slope', __name__)
+        except ImportError as exc:  # pragma: no cover - depends on install
+            raise ImportError(
+                f"'{name}' requires the optional Vision2Slope dependencies "
+                '(opencv-python, torch, transformers, scikit-image, zensvi). '
+                "Install them with: pip install 'geoai-vlm[slope]'"
+            ) from exc
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+
+def __dir__():  # noqa: D103
+    return sorted(set(globals()) | _VISION2SLOPE_EXPORTS)
+
+
 from .visualization import (
     plot_elbow_curve,
     plot_cluster_map,

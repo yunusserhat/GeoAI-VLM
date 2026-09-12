@@ -8,9 +8,11 @@ VLM-based image description with VLLM (primary) and Transformers (fallback) back
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -26,6 +28,7 @@ __all__ = [
     "VLLMBackend",
     "TransformersBackend",
     "parse_json_response",
+    "extract_summary_fields",
 ]
 
 
@@ -60,9 +63,125 @@ def parse_json_response(text: str) -> Dict[str, Any]:
             if text.startswith("json"):
                 text = text[4:].strip()
         
-        return json.loads(text)
+        parsed = json.loads(text)
     except json.JSONDecodeError as e:
         return {"error": f"Failed to parse JSON: {e}", "raw_response": text}
+
+    # Syntactically valid JSON is not necessarily a usable record. A bare list,
+    # null, number or string parses cleanly but has none of the expected fields,
+    # and silently returning it pushed an AttributeError into the caller mid-batch.
+    if not isinstance(parsed, dict):
+        return {
+            "error": (
+                "Expected a JSON object, got "
+                f"{type(parsed).__name__}"
+            ),
+            "raw_response": text,
+        }
+
+    return parsed
+
+
+
+# Summary columns are populated from whichever schema the prompt template
+# produces. The "geoai" template nests its fields; the "simple" template uses
+# flat description/tags keys. Reading only the geoai names silently left every
+# simple-template run with empty summary columns.
+_NARRATIVE_KEYS = ("scene_narrative", "description", "alt_detailed")
+_TAG_KEYS = ("semantic_tags", "tags", "keywords")
+
+
+def _first_present(parsed: Dict[str, Any], keys) -> Optional[Any]:
+    for key in keys:
+        if key in parsed and parsed[key] not in (None, ""):
+            return parsed[key]
+    return None
+
+
+def _nested(parsed: Dict[str, Any], outer: str, inner: str) -> str:
+    block = parsed.get(outer)
+    if isinstance(block, dict):
+        value = block.get(inner)
+        if value not in (None, ""):
+            return str(value)
+    return "unknown"
+
+
+def extract_summary_fields(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    """Derive the flat summary columns from a parsed model response.
+
+    Quality is reported as three distinguishable states rather than collapsed
+    into a permissive default:
+
+    ``reported``  the model stated whether the image is usable (``usable`` is
+                  True/False)
+    ``unknown``   no quality block was returned (``usable`` is None -- it is
+                  *not* assumed usable)
+    ``error``     the response could not be parsed (``usable`` is None)
+    """
+    if "error" in parsed:
+        return {
+            "scene_narrative": "",
+            "semantic_tags": "",
+            "land_use_primary": "error",
+            "street_type": "error",
+            "place_character": "error",
+            "usable": None,
+            "quality_status": "error",
+        }
+
+    narrative = _first_present(parsed, _NARRATIVE_KEYS)
+    tags = _first_present(parsed, _TAG_KEYS)
+
+    if isinstance(tags, (list, tuple)):
+        tags_str = ",".join(str(t) for t in tags)
+    elif tags is None:
+        tags_str = ""
+    else:
+        tags_str = str(tags)
+
+    quality = parsed.get("image_quality")
+    if isinstance(quality, dict) and "usable_for_analysis" in quality:
+        usable = bool(quality["usable_for_analysis"])
+        quality_status = "reported"
+    else:
+        usable = None
+        quality_status = "unknown"
+
+    return {
+        "scene_narrative": "" if narrative is None else str(narrative),
+        "semantic_tags": tags_str,
+        "land_use_primary": _nested(parsed, "land_use_character", "primary"),
+        "street_type": _nested(parsed, "urban_morphology", "street_type"),
+        "place_character": _nested(parsed, "place_character", "dominant_activity"),
+        "usable": usable,
+        "quality_status": quality_status,
+    }
+
+
+def _upsert_records(
+    existing: Optional[pd.DataFrame], batch: pd.DataFrame
+) -> pd.DataFrame:
+    """Append *batch*, replacing any prior rows for the same derived output.
+
+    Keyed on (image_id, processing_id) so that re-describing an image with the
+    same model and prompt overwrites its record instead of adding a duplicate,
+    while a different model or prompt is kept as a separate record.
+    """
+    if existing is None or len(existing) == 0:
+        return batch.reset_index(drop=True)
+
+    if {"image_id", "processing_id"}.issubset(existing.columns):
+        keys = set(
+            zip(batch["image_id"].astype(str), batch["processing_id"].astype(str))
+        )
+        mask = [
+            (str(i), str(pid)) not in keys
+            for i, pid in zip(existing["image_id"], existing["processing_id"])
+        ]
+        existing = existing[mask]
+
+    return pd.concat([existing, batch], ignore_index=True)
 
 
 class BaseBackend(ABC):
@@ -391,133 +510,166 @@ class ImageDescriber:
         
         return self._backend
     
+    # -- provenance -------------------------------------------------------
+    @property
+    def prompt_version(self) -> str:
+        """Stable short hash of the prompt pair currently configured."""
+        payload = json.dumps(
+            {"system": self.system_prompt, "user": self.user_prompt},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+    @property
+    def processing_id(self) -> str:
+        """Identity of *this* derived output: model + prompt together.
+
+        Resume decisions key on this rather than the image id alone, so
+        re-running the same images under a different model or prompt produces a
+        new derived record instead of being skipped as already finished.
+        """
+        payload = json.dumps(
+            {"model": self.model_name, "prompt": self.prompt_version},
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
     def describe(
         self,
-        image_dir: Union[str, Path],
+        image_dir: Optional[Union[str, Path]] = None,
         output_path: Optional[Union[str, Path]] = None,
         batch_size: int = 8,
         resume: bool = True,
         image_extensions: List[str] = None,
         recursive: bool = True,
+        image_paths: Optional[List[Union[str, Path]]] = None,
     ) -> pd.DataFrame:
         """
-        Describe images in a directory.
-        
+        Describe a set of images.
+
         Args:
-            image_dir: Directory containing images
-            output_path: Path to save results (Parquet). If None, returns without saving.
+            image_dir: Directory to scan for images. Ignored when *image_paths*
+                is given.
+            output_path: Path to save results (Parquet). If None, returns
+                without saving.
             batch_size: Number of images to process per batch
-            resume: If True, skip already-processed images
-            image_extensions: List of image extensions to process (default: [".jpg", ".jpeg", ".png"])
+            resume: If True, skip images already processed *by this same model
+                and prompt* (see :attr:`processing_id`). Failed records are
+                always retried.
+            image_extensions: Extensions to scan for (default: .jpg/.jpeg/.png)
             recursive: If True, search subdirectories recursively
-            
+            image_paths: Explicit list of images to describe. Use this to
+                guarantee that only a selected subset is processed, rather than
+                everything that happens to sit in *image_dir*.
+
         Returns:
-            DataFrame with image paths, IDs, raw responses, and parsed JSON fields
+            DataFrame with image paths, IDs, raw responses, parsed JSON fields
+            and provenance columns (``model_name``, ``prompt_version``,
+            ``processing_id``, ``quality_status``).
         """
-        image_dir = Path(image_dir)
-        extensions = image_extensions or [".jpg", ".jpeg", ".png"]
-        
-        # Collect image paths (recursively if requested)
-        image_paths = []
-        pattern_prefix = "**/" if recursive else ""
-        for ext in extensions:
-            image_paths.extend(image_dir.glob(f"{pattern_prefix}*{ext}"))
-            image_paths.extend(image_dir.glob(f"{pattern_prefix}*{ext.upper()}"))
-        
-        image_paths = sorted(set(image_paths))
-        print(f"Found {len(image_paths)} images in {image_dir}")
-        
-        if len(image_paths) == 0:
+        if image_paths is not None:
+            paths = [Path(p) for p in image_paths]
+            missing = [p for p in paths if not p.exists()]
+            if missing:
+                raise FileNotFoundError(
+                    f"{len(missing)} requested image(s) do not exist, "
+                    f"first: {missing[0]}"
+                )
+            image_paths_list = sorted(set(paths))
+            print(f"Describing {len(image_paths_list)} selected images")
+        elif image_dir is not None:
+            image_dir = Path(image_dir)
+            extensions = image_extensions or [".jpg", ".jpeg", ".png"]
+
+            collected = []
+            pattern_prefix = "**/" if recursive else ""
+            for ext in extensions:
+                collected.extend(image_dir.glob(f"{pattern_prefix}*{ext}"))
+                collected.extend(image_dir.glob(f"{pattern_prefix}*{ext.upper()}"))
+
+            image_paths_list = sorted(set(collected))
+            print(f"Found {len(image_paths_list)} images in {image_dir}")
+        else:
+            raise ValueError("Provide either image_dir or image_paths")
+
+        if len(image_paths_list) == 0:
             return pd.DataFrame()
-        
-        # Handle resume
+
+        # -- resume ---------------------------------------------------------
+        # Only records produced by this same model+prompt, and which actually
+        # succeeded, count as finished work.
+        existing_df = None
         processed_ids = set()
-        if resume and output_path and Path(output_path).exists():
+        if output_path and Path(output_path).exists():
             existing_df = pd.read_parquet(output_path)
-            processed_ids = set(existing_df["image_id"].tolist())
-            print(f"Resuming: {len(processed_ids)} images already processed")
-        
-        # Filter to unprocessed images
-        image_paths = [
-            p for p in image_paths
-            if p.stem not in processed_ids
-        ]
-        print(f"Images to process: {len(image_paths)}")
-        
-        if len(image_paths) == 0:
+            if resume:
+                done = existing_df
+                if "processing_id" in done.columns:
+                    done = done[done["processing_id"] == self.processing_id]
+                if "parse_error" in done.columns:
+                    done = done[~done["parse_error"].astype(bool)]
+                processed_ids = set(done["image_id"].astype(str).tolist())
+                print(f"Resuming: {len(processed_ids)} images already processed")
+
+        pending = [p for p in image_paths_list if p.stem not in processed_ids]
+        print(f"Images to process: {len(pending)}")
+
+        if len(pending) == 0:
             print("All images already processed!")
-            return pd.read_parquet(output_path) if output_path else pd.DataFrame()
-        
-        # Process in batches
-        all_results = []
-        total_batches = (len(image_paths) + batch_size - 1) // batch_size
-        
-        for batch_idx in tqdm(range(0, len(image_paths), batch_size), desc="Processing"):
-            batch_paths = image_paths[batch_idx:batch_idx + batch_size]
+            if existing_df is not None:
+                return existing_df
+            return pd.DataFrame()
+
+        # -- process --------------------------------------------------------
+        all_results: List[Dict[str, Any]] = []
+
+        for batch_idx in tqdm(range(0, len(pending), batch_size), desc="Processing"):
+            batch_paths = pending[batch_idx: batch_idx + batch_size]
             batch_path_strs = [str(p) for p in batch_paths]
-            
-            # Generate descriptions
+
             responses = self.backend.generate(
                 batch_path_strs,
                 self.system_prompt,
                 self.user_prompt,
             )
-            
-            # Parse results
+
             for img_path, response in zip(batch_paths, responses):
-                parsed = parse_json_response(response)
-                
-                result = {
-                    "image_path": str(img_path),
-                    "image_id": img_path.stem,
-                    "raw_response": response,
-                    "parsed_json": json.dumps(parsed),
-                    "parse_error": "error" in parsed,
-                }
-                
-                # Extract key fields from parsed JSON
-                if "error" not in parsed:
-                    result["scene_narrative"] = parsed.get("scene_narrative", "")
-                    
-                    # Handle semantic_tags
-                    tags = parsed.get("semantic_tags", [])
-                    if isinstance(tags, list):
-                        result["semantic_tags"] = ",".join(str(t) for t in tags)
-                    else:
-                        result["semantic_tags"] = str(tags)
-                    
-                    # Extract nested fields
-                    result["land_use_primary"] = parsed.get("land_use_character", {}).get("primary", "unknown")
-                    result["street_type"] = parsed.get("urban_morphology", {}).get("street_type", "unknown")
-                    result["place_character"] = parsed.get("place_character", {}).get("dominant_activity", "unknown")
-                    result["usable"] = parsed.get("image_quality", {}).get("usable_for_analysis", True)
-                else:
-                    result["scene_narrative"] = ""
-                    result["semantic_tags"] = ""
-                    result["land_use_primary"] = "error"
-                    result["street_type"] = "error"
-                    result["place_character"] = "error"
-                    result["usable"] = False
-                
-                all_results.append(result)
-            
-            # Save incrementally
+                all_results.append(
+                    self._build_record(img_path, response)
+                )
+
             if output_path:
                 batch_df = pd.DataFrame(all_results[-len(batch_paths):])
-                
-                if Path(output_path).exists():
-                    existing_df = pd.read_parquet(output_path)
-                    combined_df = pd.concat([existing_df, batch_df], ignore_index=True)
-                    combined_df.to_parquet(output_path, index=False)
-                else:
-                    batch_df.to_parquet(output_path, index=False)
-        
-        # Return final results
-        if output_path and Path(output_path).exists():
-            return pd.read_parquet(output_path)
-        
+                existing_df = _upsert_records(existing_df, batch_df)
+                existing_df.to_parquet(output_path, index=False)
+
+        if output_path and existing_df is not None:
+            return existing_df
+
         return pd.DataFrame(all_results)
-    
+
+    def _build_record(
+        self, img_path: Path, response: str
+    ) -> Dict[str, Any]:
+        """Turn one raw model response into a fully-provenanced record."""
+        parsed = parse_json_response(response)
+        failed = "error" in parsed
+
+        record: Dict[str, Any] = {
+            "image_path": str(img_path),
+            "image_id": img_path.stem,
+            "raw_response": response,
+            "parsed_json": json.dumps(parsed),
+            "parse_error": failed,
+            "model_name": self.model_name,
+            "prompt_version": self.prompt_version,
+            "processing_id": self.processing_id,
+            "processed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        record.update(extract_summary_fields(parsed))
+        return record
+
     def describe_single(self, image_path: Union[str, Path]) -> Dict[str, Any]:
         """
         Describe a single image.

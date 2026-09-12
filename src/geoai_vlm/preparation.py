@@ -12,6 +12,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 
 
@@ -171,10 +172,15 @@ def build_embedding_text(
         parts: List[str] = []
         for col in columns:
             val = row.get(col, "")
-            if pd.isna(val):
-                continue
-            if isinstance(val, list):
+            # Sequence-valued cells (semantic_tags is a list in the VLM schema,
+            # and becomes a numpy array after a parquet round-trip) must be
+            # collapsed *before* the scalar NaN check: pd.isna on a multi-element
+            # sequence returns an array, and using it in a boolean context
+            # raised ValueError mid-run.
+            if isinstance(val, (list, tuple, set, np.ndarray)):
                 val = ", ".join(str(v) for v in val)
+            elif pd.isna(val):
+                continue
             val = str(val).strip()
             if val:
                 parts.append(val)

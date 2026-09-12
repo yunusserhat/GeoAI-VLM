@@ -399,8 +399,8 @@ plot_lisa_map(gdf, save_path="lisa.png")
 # Category breakdown
 plot_category_distribution(gdf, category_columns=["land_use_character"])
 
-# Full HTML report
-generate_report(gdf, output_dir="./report")
+# Full report (Markdown)
+generate_report(gdf, output_path="./report/summary.md")
 ```
 
 ## One-Line Pipeline
@@ -414,14 +414,19 @@ from geoai_vlm import embed_place, cluster_descriptions, analyze_spatial
 gdf = embed_place(
     place_name="Sultanahmet, Istanbul",
     mly_api_key="YOUR_API_KEY",
-    embedding_model="Qwen/Qwen3-Embedding-0.6B"
+    model_name="Qwen/Qwen3-VL-Embedding-2B",
+    # "multimodal" (default) encodes image + description jointly;
+    # use "text" for description-only or "image" for image-only.
+    embedding_modality="multimodal",
 )
 
 # 2. Cluster
 gdf = cluster_descriptions(gdf, n_clusters=8)
 
 # 3. Spatial analysis
-gdf = analyze_spatial(gdf, column="cluster", k_neighbors=8)
+# Returns {"global": {cluster_id: MoranResult}, "gdf": <GeoDataFrame with LISA columns>}
+spatial = analyze_spatial(gdf, column="cluster", k_neighbors=8)
+gdf = spatial["gdf"]
 ```
 
 ## GeoParquet Output

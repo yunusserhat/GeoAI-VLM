@@ -330,23 +330,59 @@ def merge_metadata_and_descriptions(
     metadata_gdf: gpd.GeoDataFrame,
     descriptions_df: pd.DataFrame,
     on: str = "image_id",
+    on_duplicate: str = "error",
 ) -> gpd.GeoDataFrame:
     """
     Merge image metadata with VLM descriptions.
-    
+
     Args:
         metadata_gdf: GeoDataFrame with image metadata (from downloader)
         descriptions_df: DataFrame with VLM descriptions (from describer)
         on: Column to join on
-        
+        on_duplicate: What to do when *descriptions_df* holds more than one row
+            per join key.
+
+            ``"error"``  (default) raise, because a one-to-many join silently
+                         inflates the sample size -- the merged frame reports
+                         more observations than there are images.
+            ``"first"``  keep the first record per key.
+            ``"last"``   keep the most recent record per key.
+            ``"keep"``   preserve the historical one-to-many behaviour.
+
     Returns:
         Merged GeoDataFrame
+
+    Note:
+        Prior to v0.4 this function always behaved like ``on_duplicate="keep"``.
+        Pass ``on_duplicate="keep"`` to restore that behaviour exactly.
     """
     # Ensure both have the join column
     if on not in metadata_gdf.columns:
         raise ValueError(f"metadata_gdf missing column: {on}")
     if on not in descriptions_df.columns:
         raise ValueError(f"descriptions_df missing column: {on}")
+
+    valid = {"error", "first", "last", "keep"}
+    if on_duplicate not in valid:
+        raise ValueError(f"on_duplicate must be one of {sorted(valid)}")
+
+    n_dupes = int(descriptions_df[on].duplicated().sum())
+    if n_dupes:
+        if on_duplicate == "error":
+            examples = (
+                descriptions_df.loc[descriptions_df[on].duplicated(), on]
+                .unique()[:5]
+                .tolist()
+            )
+            raise ValueError(
+                f"descriptions_df contains {n_dupes} duplicate '{on}' value(s); "
+                f"merging would inflate the row count. Examples: {examples}. "
+                "Pass on_duplicate='first', 'last' or 'keep' to choose explicitly."
+            )
+        if on_duplicate in ("first", "last"):
+            descriptions_df = descriptions_df.drop_duplicates(
+                subset=[on], keep=on_duplicate
+            )
     
     # Get description columns (exclude image_path which may conflict)
     desc_cols = [c for c in descriptions_df.columns if c not in metadata_gdf.columns or c == on]
