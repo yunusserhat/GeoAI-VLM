@@ -35,6 +35,7 @@ def plot_elbow_curve(
     optimal_k: Optional[int] = None,
     title: str = "Elbow Method for Optimal k",
     figsize: Tuple[int, int] = (10, 6),
+    save_path: Optional[Union[str, Path]] = None,
 ):
     """
     Plot an elbow curve for K-Means cluster selection.
@@ -61,6 +62,11 @@ def plot_elbow_curve(
     ax.set_title(title, fontsize=14)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+
     return fig
 
 
@@ -75,6 +81,7 @@ def plot_cluster_map(
     cmap: Optional[str] = None,
     markersize: float = 3,
     alpha: float = 0.7,
+    save_path: Optional[Union[str, Path]] = None,
 ):
     """
     Scatter-plot the spatial distribution of clusters.
@@ -112,6 +119,11 @@ def plot_cluster_map(
     ax.set_xlabel("Longitude", fontsize=12)
     ax.set_ylabel("Latitude", fontsize=12)
     fig.tight_layout()
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+
     return fig
 
 
@@ -144,6 +156,7 @@ def plot_lisa_map(
     figsize: Tuple[int, int] = (14, 10),
     markersize: float = 3,
     alpha: float = 0.7,
+    save_path: Optional[Union[str, Path]] = None,
 ):
     """
     Plot a LISA (Local Moran's I) cluster classification map.
@@ -182,6 +195,11 @@ def plot_lisa_map(
     ax.set_xlabel("Longitude", fontsize=12)
     ax.set_ylabel("Latitude", fontsize=12)
     fig.tight_layout()
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+
     return fig
 
 
@@ -194,6 +212,7 @@ def plot_category_distribution(
     cluster_column: str = "cluster",
     figsize: Tuple[int, int] = (18, 6),
     cmap: str = "tab20",
+    save_path: Optional[Union[str, Path]] = None,
 ):
     """
     Stacked bar charts showing category distributions per cluster.
@@ -232,6 +251,11 @@ def plot_category_distribution(
         ax.tick_params(axis="x", rotation=0)
 
     fig.tight_layout()
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+
     return fig
 
 
@@ -240,7 +264,7 @@ def plot_category_distribution(
 # ---------------------------------------------------------------------------
 def generate_report(
     gdf: gpd.GeoDataFrame,
-    keywords: Dict[int, List[str]],
+    keywords: Optional[Dict[int, List[str]]] = None,
     moran_results: Optional[Dict] = None,
     category_profiles: Optional[Dict[int, Dict[str, Any]]] = None,
     output_path: Optional[Union[str, Path]] = None,
@@ -287,10 +311,13 @@ def generate_report(
     lines.append(sep + "\n")
 
     counts = gdf["cluster"].value_counts().sort_index()
-    for cid in sorted(keywords.keys()):
+    # Iterate the clusters in the frame, not the keyword map: keywords are
+    # optional, and keying on them silently produced a report with no rows.
+    keyword_map = keywords or {}
+    for cid in counts.index:
         cnt = counts.get(cid, 0)
         pct = cnt / len(gdf) * 100
-        kws = ", ".join(keywords[cid][:4])
+        kws = ", ".join(keyword_map.get(cid, [])[:4])
         row = f"| {cid} | {cnt:,} | {pct:.1f}% | {kws} |"
         if category_profiles:
             prof = category_profiles.get(cid, {})

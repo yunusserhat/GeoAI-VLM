@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Optional, Union
 
 import geopandas as gpd
+import pandas as pd
 from shapely.geometry import LineString, Polygon
 
-from .describer import ImageDescriber
+from .describer import DESCRIPTION_COLUMNS, ImageDescriber
 from .downloader import MapillaryDownloader
 from .geometry import (
     BaseQuery,
@@ -142,13 +143,48 @@ def describe_query(
     
     # Use a temporary path for descriptions
     desc_path = output_dir / "descriptions_temp.parquet"
-    
-    descriptions_df = describer.describe(
-        image_dir=output_dir,
-        output_path=desc_path,
-        batch_size=batch_size,
-        resume=resume,
-    )
+
+    # Describe exactly the images this query selected. Scanning output_dir
+    # instead would also pick up images left by an earlier, wider run, so the
+    # result would silently contain rows the query never asked for.
+    selected_paths = None
+    if "image_path" in metadata_gdf.columns:
+        candidates = [
+            Path(p) for p in metadata_gdf["image_path"].dropna().tolist()
+        ]
+        selected_paths = [p for p in candidates if p.exists()]
+        n_missing = len(candidates) - len(selected_paths)
+        if n_missing and verbosity > 0:
+            print(
+                f"   Note: {n_missing} of {len(candidates)} selected images are "
+                "not present on disk (download failed or filtered) and will "
+                "have no description."
+            )
+
+    if selected_paths is not None:
+        # The query produced a selection. An *empty* selection means nothing
+        # was downloadable -- which is not an invitation to scan the work
+        # directory, since that is exactly how unrelated images got described.
+        if selected_paths:
+            descriptions_df = describer.describe(
+                image_paths=selected_paths,
+                output_path=desc_path,
+                batch_size=batch_size,
+                resume=resume,
+            )
+        else:
+            if verbosity > 0:
+                print("   No images available to describe for this query.")
+            descriptions_df = pd.DataFrame(columns=list(DESCRIPTION_COLUMNS))
+    else:
+        # No image_path column (e.g. an older metadata frame): fall back to
+        # scanning the directory, as before.
+        descriptions_df = describer.describe(
+            image_dir=output_dir,
+            output_path=desc_path,
+            batch_size=batch_size,
+            resume=resume,
+        )
     
     if verbosity > 0:
         print(f"Generated descriptions for {len(descriptions_df)} images")
@@ -168,7 +204,11 @@ def describe_query(
         print(f"\nStep 4: Saving results...")
     
     from .io import export_formats as do_export
-    do_export(result_gdf, output_dir, "results", export_formats)
+
+    # Export next to the requested output_path, under its name. Previously this
+    # branch always wrote output_dir/results.*, so a caller-supplied
+    # output_path was accepted and then quietly ignored.
+    do_export(result_gdf, output_path.parent, output_path.stem, export_formats)
     
     # Clean up temp file
     if desc_path.exists():
@@ -410,6 +450,10 @@ def embed_place(
     output_dir: Optional[Union[str, Path]] = None,
     buffer_m: float = 0,
     max_images: Optional[int] = None,
+    embedding_modality: str = "multimodal",
+    text_column: str = "scene_narrative",
+    image_column: str = "image_path",
+    on_missing_image: str = "error",
     **kwargs,
 ) -> gpd.GeoDataFrame:
     """
@@ -428,10 +472,38 @@ def embed_place(
         max_images: Maximum images to process.
         **kwargs: Forwarded to :func:`describe_query`.
 
+        embedding_modality: Which representation to build.
+
+            ``"multimodal"`` (default) encodes the image together with its
+            generated description -- the joint representation used by the Fatih
+            study. ``"text"`` encodes the description only. ``"image"`` encodes
+            the image only.
+        text_column: Column holding the description text.
+        image_column: Column holding the local image path.
+        on_missing_image: Behaviour when an image file is absent and the
+            modality needs it. ``"error"`` (default) raises, ``"skip"`` leaves
+            the embedding empty and records ``missing_image``, ``"text"``
+            downgrades that row to a text-only embedding and records it as such.
+
     Returns:
-        GeoDataFrame with VLM descriptions and an ``embedding`` column.
+        GeoDataFrame with VLM descriptions, an ``embedding`` column and an
+        ``embedding_modality`` column recording how each row was encoded.
+
+    Note:
+        Prior to v0.4 this function always produced a *text-only* embedding
+        despite documenting a multimodal one. Pass ``embedding_modality="text"``
+        to reproduce the old numbers exactly.
     """
     from .embedding import ImageEmbedder
+
+    valid_modalities = {"multimodal", "text", "image"}
+    if embedding_modality not in valid_modalities:
+        raise ValueError(
+            f"embedding_modality must be one of {sorted(valid_modalities)}"
+        )
+    valid_missing = {"error", "skip", "text"}
+    if on_missing_image not in valid_missing:
+        raise ValueError(f"on_missing_image must be one of {sorted(valid_missing)}")
 
     gdf = describe_place(
         place_name=place_name,
@@ -445,12 +517,74 @@ def embed_place(
     if len(gdf) == 0:
         return gdf
 
+    gdf = gdf.copy()
     embedder = ImageEmbedder(model_name=model_name, backend=embedding_backend)
 
-    # Embed the text descriptions
-    texts = gdf["scene_narrative"].fillna("").tolist()
-    embeddings = embedder.embed_texts(texts)
-    gdf["embedding"] = list(embeddings)
+    texts = gdf[text_column].fillna("").astype(str).tolist() if text_column in gdf else [""] * len(gdf)
+
+    if embedding_modality == "text":
+        embeddings = embedder.embed_texts(texts)
+        gdf["embedding"] = list(embeddings)
+        gdf["embedding_modality"] = "text"
+        return gdf
+
+    # Image is required from here on.
+    if image_column not in gdf.columns:
+        raise ValueError(
+            f"embedding_modality={embedding_modality!r} needs an image path "
+            f"column {image_column!r}, which is not present."
+        )
+
+    paths = [
+        Path(p) if isinstance(p, (str, Path)) and str(p) else None
+        for p in gdf[image_column].tolist()
+    ]
+    present = [p is not None and p.exists() for p in paths]
+    n_missing = len(present) - sum(present)
+
+    if n_missing and on_missing_image == "error":
+        first = next(
+            (str(p) for p, ok in zip(paths, present) if not ok), "<empty>"
+        )
+        raise FileNotFoundError(
+            f"{n_missing} of {len(paths)} image files are missing, so a "
+            f"{embedding_modality} embedding cannot be built for them. "
+            f"First missing: {first}. Pass on_missing_image='skip' to leave "
+            "them empty, or 'text' to downgrade those rows explicitly."
+        )
+
+    # Never downgrade silently: every row records how it was actually encoded.
+    modality_col = [None] * len(gdf)
+    embedding_col = [None] * len(gdf)
+
+    usable_idx = [i for i, ok in enumerate(present) if ok]
+    if usable_idx:
+        if embedding_modality == "image":
+            vectors = embedder.embed_images([str(paths[i]) for i in usable_idx])
+        else:
+            vectors = embedder.embed_multimodal(
+                [
+                    {"image": str(paths[i]), "text": texts[i]}
+                    for i in usable_idx
+                ]
+            )
+        for slot, i in enumerate(usable_idx):
+            embedding_col[i] = vectors[slot]
+            modality_col[i] = embedding_modality
+
+    missing_idx = [i for i, ok in enumerate(present) if not ok]
+    if missing_idx:
+        if on_missing_image == "text":
+            fallback = embedder.embed_texts([texts[i] for i in missing_idx])
+            for slot, i in enumerate(missing_idx):
+                embedding_col[i] = fallback[slot]
+                modality_col[i] = "text"
+        else:  # skip
+            for i in missing_idx:
+                modality_col[i] = "missing_image"
+
+    gdf["embedding"] = embedding_col
+    gdf["embedding_modality"] = modality_col
 
     return gdf
 

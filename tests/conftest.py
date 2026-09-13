@@ -5,6 +5,8 @@ Shared pytest fixtures for GeoAI-VLM tests.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
@@ -90,8 +92,26 @@ class _MockEmbeddingBackend:
         inputs: List[Dict[str, Any]],
         instruction: str = "",
     ) -> np.ndarray:
-        rng = np.random.RandomState(len(inputs))
-        emb = rng.randn(len(inputs), self.dim).astype(np.float32)
+        """Deterministic per-item embedding derived from the item's content.
+
+        Seeding per *item* rather than per *batch* is what makes this stand in
+        for a real embedder: the same input always yields the same vector, a
+        different input yields a different one, and the batch size the caller
+        happens to choose never changes the result.
+        """
+        rows = []
+        for item in inputs:
+            payload = json.dumps(
+                {k: str(v) for k, v in sorted(item.items())},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            seed = int(
+                hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8], 16
+            )
+            rows.append(np.random.RandomState(seed).randn(self.dim))
+
+        emb = np.asarray(rows, dtype=np.float32).reshape(len(inputs), self.dim)
         # L2-normalise
         norms = np.linalg.norm(emb, axis=1, keepdims=True)
         norms[norms == 0] = 1.0

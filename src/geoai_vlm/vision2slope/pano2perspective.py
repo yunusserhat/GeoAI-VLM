@@ -5,7 +5,6 @@ Panorama to perspective transformation module for Vision2Slope pipeline.
 import logging
 from pathlib import Path
 from typing import List, Optional
-from zensvi.transform import ImageTransformer
 import glob
 
 
@@ -27,6 +26,24 @@ class PanoramaTransformer:
         self.phi = getattr(config, "panorama_phi", 0)
         self.aspects = getattr(config, "panorama_aspects", (10, 10))
         self.show_size = getattr(config, "panorama_show_size", 100)
+
+    @staticmethod
+    def _image_transformer_cls():
+        """Import zensvi on use, not on import.
+
+        Only the panorama step needs zensvi, but importing it at module level
+        made it a hard requirement of the whole slope package -- and zensvi
+        resolves to roughly 109 packages including torch and CUDA libraries.
+        """
+        try:
+            from zensvi.transform import ImageTransformer
+        except ImportError as exc:
+            raise ImportError(
+                "Panorama transformation requires zensvi, which is not part of "
+                "the core install or of the slope extra. Install it with: "
+                "pip install 'geoai-vlm[panorama]'"
+            ) from exc
+        return ImageTransformer
 
     def transform_panorama(
         self, input_dir: str, output_dir: str, generate_left_right: bool = True
@@ -51,7 +68,7 @@ class PanoramaTransformer:
         generated_files = []
 
         self.logger.warning("generate_left_right=False: transforming all images as-is")
-        transformer = ImageTransformer(dir_input=input_dir, dir_output=output_dir)
+        transformer = self._image_transformer_cls()(dir_input=input_dir, dir_output=output_dir)
         print(output_dir)
         transformer.transform_images(
             style_list="perspective",
