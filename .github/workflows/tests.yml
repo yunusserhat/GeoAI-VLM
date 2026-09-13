@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_call:
 
@@ -39,7 +39,7 @@ jobs:
       - name: Assert the core imports without the heavy vision stack
         run: |
           python - <<'PY'
-          import importlib, sys
+          import importlib.util
           for mod in ("cv2", "torch", "transformers", "zensvi", "skimage", "vllm"):
               assert importlib.util.find_spec(mod) is None, f"{mod} unexpectedly installed"
           import geoai_vlm
