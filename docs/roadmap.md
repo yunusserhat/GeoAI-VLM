@@ -18,11 +18,11 @@ establish that any design change affects health or behaviour.
 | Item | Acceptance |
 |---|---|
 | ~~Vector search contract~~ | **Done** — see `review_findings.md`, Phase 0 batch 2a (31 tests). Turned up a further defect: `metric="ip"` with `index_type="ivf"` was building an L2 index. |
-| Vision2Slope parallelism | Worker moved to module level and shown to pickle; model created once per process, not per image; a test asserting the model is constructed once for an N-image batch |
-| `ModelConfig` plumbing | `device` and `cache_dir` shown to reach the model on both the `_create_processor` and `ImageSlopeEstimator` paths |
+| ~~Vision2Slope parallelism~~ | **Done** — batch 2b. Also found `_create_legacy_config` returned an unpicklable method-local class. |
+| ~~`ModelConfig` plumbing~~ | **Done** — batch 2b. |
 | Panorama manifest | Every generated perspective recorded with its source panorama, angle and status; a test that nested folders are fully covered and that the returned file list equals what was produced |
-| Full-denominator slope tables | A record-level table keeping every input with its status, plus a separate subset of measurements that passed thresholds; success rate reported over all processed images |
-| `visualizers.py` directories | Each output option creates its own directory; tested as independent combinations |
+| ~~Full-denominator slope tables~~ | **Done** — batch 2b, four distinguishable outcomes written to a records CSV. |
+| ~~`visualizers.py` directories~~ | **Done** — batch 2b. |
 
 ---
 

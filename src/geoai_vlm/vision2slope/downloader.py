@@ -21,6 +21,24 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def normalise_heading(heading):
+    """Return a heading as a float, or ``None`` when it is genuinely unknown.
+
+    ``pano.heading or 0.0`` mapped an unknown heading onto 0 deg -- a real
+    bearing, due north -- so downstream signed-slope work could not tell a
+    measured north-facing view from a missing one.
+    """
+    if heading is None:
+        return None
+    try:
+        value = float(heading)
+    except (TypeError, ValueError):
+        return None
+    if value != value:  # NaN
+        return None
+    return value
+
+
 class GSVDownloader:
     """Download Google Street View panoramas based on coordinates."""
 
@@ -84,7 +102,7 @@ class GSVDownloader:
                         "pano_id": pano.id,
                         "lat": pano.lat,
                         "lon": pano.lon,
-                        "heading": pano.heading or 0.0,
+                        "heading": normalise_heading(pano.heading),
                     }
                     if edge_bearings is not None:
                         record["edge_bearing"] = edge_bearings[i]
@@ -100,7 +118,7 @@ class GSVDownloader:
                     "pano_id": pano.id,
                     "lat": pano.lat,
                     "lon": pano.lon,
-                    "heading": pano.heading or 0.0,
+                    "heading": normalise_heading(pano.heading),
                 }
                 if edge_bearings is not None:
                     record["edge_bearing"] = edge_bearings[i]

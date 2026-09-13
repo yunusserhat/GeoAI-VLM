@@ -149,26 +149,68 @@ in `df.attrs`.
 ChromaDB, and by over-fetching then filtering on FAISS so a selective filter
 still returns up to `n_results` rows.
 
+## Phase 0 batch 2b — Vision2Slope scale and record integrity
+
+Verified on CPU with the real vision stack installed (torch 2.14 CPU, opencv,
+scikit-image, transformers). No model is downloaded: the segmentation model is
+replaced by a counting stub (`tests/test_vision2slope_scale.py`, 24 tests).
+
+| # | Finding | Status |
+|---|---------|--------|
+| S1 | The parallel worker was a closure defined inside `process_batch_parallel`, capturing `self`. `multiprocessing` sends the callable to the child by pickle, and a local function cannot be pickled, so the parallel path could not start at all | fixed |
+| S2 | `_create_legacy_config` returned an instance of a class defined inside the method — also unpicklable, so it could not have been passed to workers either | fixed |
+| S3 | The worker body constructed `SegmentationModel` inside every call, reloading the model once per image | fixed |
+| S4 | `ModelConfig.device` and `cache_dir` never reached the model: `SegmentationModel.__init__` accepted neither and hardcoded CUDA auto-detection | fixed |
+| S5 | `_bi_slope_estimate` returned only successful, in-threshold rows, and the run summary was computed from it — so failures and filtered steep angles vanished from their own denominator | fixed |
+| S6 | Unknown GSV heading was coerced to 0°, a real bearing (due north), by `pano.heading or 0.0` | fixed |
+| S7 | `drop_duplicates(subset="pano_id")` kept one row per panorama, discarding the other road directions a signed slope needs | fixed |
+| S8 | `visualizers.py` created `masks_dir` only under `save_segmentation_masks`, so enabling road masks alone raised `AttributeError: 'Visualizer' object has no attribute 'masks_dir'` and the output was silently lost | fixed |
+| S9 | The whole slope package imported `zensvi` at module level via `pano2perspective`, making ~109 packages a hard requirement even for callers that never touch panoramas | fixed |
+| S10 | The run summary raised on a missing statistic column, discarding a completed run at the last step | fixed |
+
+### Scale: model lifetime across processes
+
+The pool is now created with an initialiser that builds one processor per worker
+process, reused for every image that process handles. A test asserts the model
+is constructed **once** for a four-image batch, and that the worker survives the
+exact serialiser `Pool` uses (`multiprocessing.reduction.ForkingPickler`).
+
+### Record-level accounting
+
+`build_record_table` keeps every processed image and labels it with one of four
+distinguishable outcomes, and `summarise_records` reports over all of them:
+
+| `evaluation_status` | Meaning |
+|---|---|
+| `measured` | produced a usable slope measurement |
+| `processing_failed` | never produced a result |
+| `angle_filtered` | measured, but outside the accepted angle range |
+| `angle_missing` | processed successfully but no road edge angle |
+
+Both batch paths write `vision2slope_records_<timestamp>.csv` alongside the
+results CSV and expose it as `pipeline.records_`. The measurement subset returned
+by `_bi_slope_estimate` is unchanged, so "which measurements qualify" and "what
+happened to every image" are now separate tables.
+
+### Packaging
+
+- `numpy<2.dev0` is relaxed to `numpy>=1.24`. The full suite was run on **numpy
+  1.26.4 with opencv 4.11** and on **numpy 2.4.6 with opencv 5.0**, 184 passed
+  both times. The old upper bound made the slope extra uninstallable, because
+  `opencv-python>=5` requires `numpy>=2`.
+- `zensvi` moved out of `slope` into a new `panorama` extra, since only the
+  lazily-imported panorama step needs it.
+
 ## Still open — confirmed by reading, not yet fixed
 
 These were reproduced by source inspection in this checkout. None has a
 regression test yet, and none should be treated as closed.
 
-**Vision2Slope / scale**
-- `Vision2SlopePipeline.process_batch_parallel` defines its worker inside the
-  method, so it does not survive standard multiprocessing pickling; the worker
-  body also re-creates the model for every image.
-- `ModelConfig.device` and `cache_dir` are not forwarded on the `_create_processor`
-  path, though the simple `ImageSlopeEstimator` honours them.
+**Vision2Slope**
 - `pano2perspective.generate_left_right` does not branch the transformation; the
   returned file list collects only top-level files while the pipeline searches
-  nested folders and takes the first match.
-- `_bi_slope_estimate` returns only the successful, in-threshold subset, so the
-  summary denominator loses failures and filtered steep angles.
-- Unknown GSV heading is coerced to 0°, and later metadata handling keeps the
-  first record per panorama, discarding other road-direction matches.
-- `visualizers.py` does not create `masks_dir` when only the road-mask output is
-  enabled.
+  nested folders and takes the first match. A manifest tying every generated
+  perspective to its source panorama, angle and status is still outstanding.
 
 ## Review round 1 (PR #1)
 

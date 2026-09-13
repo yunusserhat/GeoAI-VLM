@@ -49,7 +49,9 @@ requires-python = ">=3.9"
 dependencies = [
     "geopandas>=1.1.2",
     "pandas>=2.3.3",
-    "numpy<2.dev0",
+    # No upper bound: the suite passes on numpy 1.26 and 2.4, and pinning
+    # <2 made the slope extra uninstallable (opencv-python>=5 needs numpy>=2).
+    "numpy>=1.24",
     "shapely>=2.1.2",
     "pyarrow>=16.0.0",
     "haversine>=2.9.0",
@@ -88,11 +90,15 @@ slope = [
     "transformers>=4.57.3",
     "opencv-python>=4.8.0",
     "scikit-image>=0.21.0",
-    "zensvi>=1.4.3",
     "streetlevel>=0.12.0",
 ]
+# Panorama-to-perspective transformation. Split out because zensvi is imported
+# lazily by that one step, so the rest of Vision2Slope runs without it.
+panorama = [
+    "zensvi>=1.4.3",
+]
 all = [
-    "geoai-vlm[vlm,search,slope,download]",
+    "geoai-vlm[vlm,search,slope,download,panorama]",
 ]
 dev = [
     "pytest>=9.0.0",
