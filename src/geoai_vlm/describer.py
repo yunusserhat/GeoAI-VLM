@@ -29,7 +29,28 @@ __all__ = [
     "TransformersBackend",
     "parse_json_response",
     "extract_summary_fields",
+    "DESCRIPTION_COLUMNS",
 ]
+
+#: Columns of a description record, in the order describe() produces them.
+DESCRIPTION_COLUMNS = (
+    "image_path",
+    "image_id",
+    "raw_response",
+    "parsed_json",
+    "parse_error",
+    "model_name",
+    "prompt_version",
+    "processing_id",
+    "processed_at",
+    "scene_narrative",
+    "semantic_tags",
+    "land_use_primary",
+    "street_type",
+    "place_character",
+    "usable",
+    "quality_status",
+)
 
 
 def parse_json_response(text: str) -> Dict[str, Any]:
@@ -141,8 +162,12 @@ def extract_summary_fields(parsed: Dict[str, Any]) -> Dict[str, Any]:
         tags_str = str(tags)
 
     quality = parsed.get("image_quality")
-    if isinstance(quality, dict) and "usable_for_analysis" in quality:
-        usable = bool(quality["usable_for_analysis"])
+    raw_usable = quality.get("usable_for_analysis") if isinstance(quality, dict) else None
+    # Only a real boolean counts as a verdict. Coercing with bool() would turn
+    # null into "reported unusable" and the string "false" into "reported
+    # usable" -- both of which invent a judgement the model never made.
+    if isinstance(raw_usable, bool):
+        usable = raw_usable
         quality_status = "reported"
     else:
         usable = None
@@ -607,6 +632,16 @@ class ImageDescriber:
                 done = existing_df
                 if "processing_id" in done.columns:
                     done = done[done["processing_id"] == self.processing_id]
+                else:
+                    # Output written before provenance existed cannot be
+                    # attributed to any model or prompt, so it cannot be
+                    # claimed as this run's finished work.
+                    print(
+                        f"Existing output {output_path} predates processing "
+                        "provenance (no processing_id column); re-describing "
+                        "all images rather than assuming they match this run."
+                    )
+                    done = done.iloc[0:0]
                 if "parse_error" in done.columns:
                     done = done[~done["parse_error"].astype(bool)]
                 processed_ids = set(done["image_id"].astype(str).tolist())

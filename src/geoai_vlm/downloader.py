@@ -66,8 +66,16 @@ class MapillaryDownloader:
     def downloader(self):
         """Lazy-load ZenSVI MLYDownloader."""
         if self._downloader is None:
-            from zensvi.download import MLYDownloader
-            
+            try:
+                from zensvi.download import MLYDownloader
+            except ImportError as exc:
+                raise ImportError(
+                    "Downloading Mapillary imagery requires zensvi, which is not "
+                    "part of the core install (it resolves to torch, torchvision, "
+                    "transformers and CUDA libraries). Install it with: "
+                    "pip install 'geoai-vlm[download]'"
+                ) from exc
+
             self._downloader = MLYDownloader(
                 mly_api_key=self.mly_api_key,
                 max_workers=self.max_workers,

@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Optional, Union
 
 import geopandas as gpd
+import pandas as pd
 from shapely.geometry import LineString, Polygon
 
-from .describer import ImageDescriber
+from .describer import DESCRIPTION_COLUMNS, ImageDescriber
 from .downloader import MapillaryDownloader
 from .geometry import (
     BaseQuery,
@@ -160,14 +161,24 @@ def describe_query(
                 "have no description."
             )
 
-    if selected_paths:
-        descriptions_df = describer.describe(
-            image_paths=selected_paths,
-            output_path=desc_path,
-            batch_size=batch_size,
-            resume=resume,
-        )
+    if selected_paths is not None:
+        # The query produced a selection. An *empty* selection means nothing
+        # was downloadable -- which is not an invitation to scan the work
+        # directory, since that is exactly how unrelated images got described.
+        if selected_paths:
+            descriptions_df = describer.describe(
+                image_paths=selected_paths,
+                output_path=desc_path,
+                batch_size=batch_size,
+                resume=resume,
+            )
+        else:
+            if verbosity > 0:
+                print("   No images available to describe for this query.")
+            descriptions_df = pd.DataFrame(columns=list(DESCRIPTION_COLUMNS))
     else:
+        # No image_path column (e.g. an older metadata frame): fall back to
+        # scanning the directory, as before.
         descriptions_df = describer.describe(
             image_dir=output_dir,
             output_path=desc_path,

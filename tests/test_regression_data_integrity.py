@@ -25,6 +25,7 @@ R11 the test embedder was content-independent and batch-size-dependent.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -613,3 +614,212 @@ class TestMockEmbedderContract:
     def test_embeddings_are_l2_normalised(self, mock_embedder):
         emb = mock_embedder.embed_texts(["x", "y", "z"])
         assert np.allclose(np.linalg.norm(emb, axis=1), 1.0, atol=1e-5)
+
+
+# ===========================================================================
+# Review round 1 — findings raised by the PR review bot on #1.
+#
+# R12 zensvi moved out of core, but the core download path imports it.
+# R13 an empty selected set fell back to scanning the work directory (R2 again).
+# R14 a non-boolean usable_for_analysis was coerced with bool().
+# R15 a legacy output without processing_id was treated as current work.
+# R16 generate_report listed no clusters when keywords were omitted.
+# ===========================================================================
+class TestDownloadDependencyContract:
+    """The Mapillary download path needs zensvi; the packaging must say so."""
+
+    def test_missing_zensvi_raises_an_actionable_error(self, monkeypatch):
+        """R12: a bare ModuleNotFoundError does not tell the user what to install."""
+        from geoai_vlm.downloader import MapillaryDownloader
+
+        monkeypatch.setitem(sys.modules, "zensvi", None)
+        dl = MapillaryDownloader(mly_api_key="dummy")
+
+        with pytest.raises(ImportError) as exc:
+            _ = dl.downloader
+
+        message = str(exc.value)
+        assert "zensvi" in message
+        assert "geoai-vlm[" in message, (
+            f"error must name the extra that provides it, got: {message}"
+        )
+
+    def test_an_extra_declares_zensvi(self):
+        """R12: zensvi must be installable through a declared extra."""
+        from importlib.metadata import metadata
+
+        reqs = metadata("geoai-vlm").get_all("Requires-Dist") or []
+        zensvi_reqs = [r for r in reqs if r.lower().startswith("zensvi")]
+        assert zensvi_reqs, "zensvi is not declared anywhere in the distribution"
+
+        # The environment marker may quote the extra name either way.
+        extras = set()
+        for req in zensvi_reqs:
+            match = re.search(r"""extra\s*==\s*['"]([^'"]+)['"]""", req)
+            if match:
+                extras.add(match.group(1))
+        assert extras, f"zensvi is declared but not reachable via an extra: {zensvi_reqs}"
+        assert "all" in extras, f"the 'all' extra must include zensvi, got {sorted(extras)}"
+
+
+class TestEmptySelection:
+    """An empty selected set must not fall back to scanning the directory."""
+
+    def test_no_downloadable_images_does_not_scan_work_dir(self, monkeypatch, tmp_path):
+        """R13: this is R2 again, in the case where every download failed."""
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        from geoai_vlm import pipeline as pl
+
+        img_dir = tmp_path / "work"
+        # Images on disk that the query did NOT select.
+        _write_images(img_dir, ["stale_a", "stale_b"])
+
+        # Metadata points at files that were never successfully downloaded.
+        meta = gpd.GeoDataFrame(
+            {
+                "image_id": ["1", "2"],
+                "image_path": [
+                    str(img_dir / "1.jpg"),
+                    str(img_dir / "2.jpg"),
+                ],
+            },
+            geometry=[Point(0, 0), Point(1, 1)],
+            crs="EPSG:4326",
+        )
+
+        class _StubDownloader:
+            def __init__(self, *a, **k):
+                pass
+
+            def download(self, *a, **k):
+                return meta
+
+        monkeypatch.setattr(pl, "MapillaryDownloader", _StubDownloader)
+
+        captured = {}
+
+        class _StubDescriber:
+            def __init__(self, *a, **k):
+                pass
+
+            def describe(self, image_dir=None, image_paths=None, **k):
+                captured["image_dir"] = image_dir
+                captured["image_paths"] = image_paths
+                ids = sorted(p.stem for p in Path(image_dir).glob("*.jpg"))
+                return pd.DataFrame({"image_id": ids, "scene_narrative": ["x"] * len(ids)})
+
+        monkeypatch.setattr(pl, "ImageDescriber", _StubDescriber)
+
+        result = pl.describe_query(
+            query=object(),
+            mly_api_key="dummy",
+            output_dir=img_dir,
+            output_path=tmp_path / "out.parquet",
+            verbosity=0,
+        )
+
+        assert captured.get("image_dir") is None, (
+            "with no downloadable images the work directory must not be scanned"
+        )
+        assert "stale_a" not in set(result.get("image_id", []))
+        assert len(result) == 2
+        assert result["scene_narrative"].isna().all()
+
+
+class TestNonBooleanQuality:
+    """usable_for_analysis must be a real boolean to count as reported."""
+
+    @pytest.mark.parametrize(
+        "raw", [None, "false", "true", 1, 0, "yes", [], {}],
+        ids=["null", "str-false", "str-true", "int-1", "int-0", "yes", "list", "dict"],
+    )
+    def test_non_boolean_quality_is_unknown(self, raw, tmp_path):
+        """R14: bool('false') is True and bool(None) is False — neither is 'reported'."""
+        paths = _write_images(tmp_path / f"nb{abs(hash(str(raw)))}", ["n1"])
+        response = json.dumps(
+            {"scene_narrative": "x", "image_quality": {"usable_for_analysis": raw}}
+        )
+        df = _make_describer([response]).describe(image_paths=paths)
+        row = df.iloc[0]
+        assert row["quality_status"] == "unknown", (
+            f"{raw!r} is not a boolean and must not be reported as a quality verdict"
+        )
+        assert pd.isna(row["usable"])
+
+    @pytest.mark.parametrize("raw", [True, False], ids=["true", "false"])
+    def test_real_booleans_are_still_reported(self, raw, tmp_path):
+        paths = _write_images(tmp_path / f"b{raw}", ["b1"])
+        response = json.dumps(
+            {"scene_narrative": "x", "image_quality": {"usable_for_analysis": raw}}
+        )
+        df = _make_describer([response]).describe(image_paths=paths)
+        row = df.iloc[0]
+        assert row["quality_status"] == "reported"
+        assert bool(row["usable"]) is raw
+
+
+class TestLegacyResume:
+    """Output written before provenance existed cannot be matched to a run."""
+
+    def test_legacy_output_without_processing_id_is_not_resumed(self, tmp_path):
+        """R15: legacy rows must not be claimed as this model+prompt's work."""
+        paths = _write_images(tmp_path / "lg", ["l1"])
+        out = tmp_path / "legacy.parquet"
+
+        # A pre-Phase-0 file: no processing_id column.
+        pd.DataFrame(
+            {
+                "image_id": ["l1"],
+                "scene_narrative": ["old"],
+                "parse_error": [False],
+            }
+        ).to_parquet(out, index=False)
+
+        d = _make_describer([GEOAI_RESPONSE])
+        d.describe(image_paths=paths, output_path=out, resume=True)
+
+        assert d._backend.seen_paths, (
+            "legacy rows without processing_id were treated as already processed"
+        )
+
+
+class TestGenerateReportClusters:
+    """The documented call must actually list the clusters in the frame."""
+
+    def test_report_lists_clusters_without_keywords(self, sample_gdf, tmp_path):
+        """R16: making keywords optional left the cluster table empty."""
+        from geoai_vlm.visualization import generate_report
+
+        gdf = sample_gdf.copy()
+        gdf["cluster"] = [i % 3 for i in range(len(gdf))]
+
+        text = generate_report(gdf, output_path=tmp_path / "r.md")
+        for cid in (0, 1, 2):
+            assert f"| {cid} |" in text, f"cluster {cid} missing from report:\n{text}"
+
+    def test_report_still_uses_keywords_when_given(self, sample_gdf, tmp_path):
+        from geoai_vlm.visualization import generate_report
+
+        gdf = sample_gdf.copy()
+        gdf["cluster"] = [i % 2 for i in range(len(gdf))]
+
+        text = generate_report(
+            gdf, keywords={0: ["alpha", "beta"], 1: ["gamma"]},
+            output_path=tmp_path / "r2.md",
+        )
+        assert "alpha" in text and "gamma" in text
+
+    def test_report_handles_cluster_without_keywords(self, sample_gdf, tmp_path):
+        """A partial keyword map must not drop the other clusters."""
+        from geoai_vlm.visualization import generate_report
+
+        gdf = sample_gdf.copy()
+        gdf["cluster"] = [i % 3 for i in range(len(gdf))]
+
+        text = generate_report(
+            gdf, keywords={0: ["alpha"]}, output_path=tmp_path / "r3.md"
+        )
+        for cid in (0, 1, 2):
+            assert f"| {cid} |" in text

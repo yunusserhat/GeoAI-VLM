@@ -80,12 +80,19 @@ Additive, backward-compatible changes:
 ### Install layout
 
 ```
-pip install geoai-vlm            # core: queries, download, I/O, clustering, spatial
-pip install 'geoai-vlm[vlm]'     # + local VLM inference (torch, vllm, transformers)
-pip install 'geoai-vlm[search]'  # + chromadb, faiss
-pip install 'geoai-vlm[slope]'   # + Vision2Slope (cv2, torch, zensvi, streetlevel)
-pip install 'geoai-vlm[all]'     # everything
+pip install geoai-vlm              # core: queries, GeoParquet I/O, parsing, clustering, spatial
+pip install 'geoai-vlm[download]'  # + Mapillary download (zensvi)
+pip install 'geoai-vlm[vlm]'       # + local VLM inference (torch, vllm, transformers)
+pip install 'geoai-vlm[search]'    # + chromadb, faiss
+pip install 'geoai-vlm[slope]'     # + Vision2Slope (cv2, torch, zensvi, streetlevel)
+pip install 'geoai-vlm[all]'       # everything
 ```
+
+The core install deliberately excludes the Mapillary download path: `zensvi`
+resolves to roughly 109 packages including `torch`, `torchvision`,
+`transformers` and CUDA runtime libraries, which would defeat the split. The
+end-to-end pipeline (`describe_place`, `describe_query`) therefore needs
+`[download]`; calling it without that extra raises an error naming it.
 
 Vision2Slope names remain importable from the top-level package; they resolve on
 first attribute access (PEP 562) and raise a message naming the extra if the
@@ -118,6 +125,19 @@ regression test yet, and none should be treated as closed.
   first record per panorama, discarding other road-direction matches.
 - `visualizers.py` does not create `masks_dir` when only the road-mask output is
   enabled.
+
+## Review round 1 (PR #1)
+
+Five further defects were raised by the PR review bot and fixed in the same PR.
+Four of them were introduced by the batch-1 changes themselves.
+
+| # | Finding | Test |
+|---|---------|------|
+| R12 | `zensvi` moved out of core, but `MapillaryDownloader` needs it, leaving the default install unable to run the documented pipeline | `TestDownloadDependencyContract` |
+| R13 | An empty selected set fell through to scanning the work directory — R2 again, exactly when no image was downloadable | `TestEmptySelection` |
+| R14 | `bool()` coercion made `null` a reported *unusable* and the string `"false"` a reported *usable* | `TestNonBooleanQuality` (10 cases) |
+| R15 | A legacy output without `processing_id` was treated as this model and prompt's finished work | `TestLegacyResume` |
+| R16 | Making `keywords` optional left `generate_report` listing no clusters at all | `TestGenerateReportClusters` |
 
 **Scale behaviour**
 - The batch write path in `ImageDescriber.describe` still rewrites the whole

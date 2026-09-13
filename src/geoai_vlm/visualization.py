@@ -311,10 +311,13 @@ def generate_report(
     lines.append(sep + "\n")
 
     counts = gdf["cluster"].value_counts().sort_index()
-    for cid in sorted((keywords or {}).keys()):
+    # Iterate the clusters in the frame, not the keyword map: keywords are
+    # optional, and keying on them silently produced a report with no rows.
+    keyword_map = keywords or {}
+    for cid in counts.index:
         cnt = counts.get(cid, 0)
         pct = cnt / len(gdf) * 100
-        kws = ", ".join(keywords[cid][:4])
+        kws = ", ".join(keyword_map.get(cid, [])[:4])
         row = f"| {cid} | {cnt:,} | {pct:.1f}% | {kws} |"
         if category_profiles:
             prof = category_profiles.get(cid, {})

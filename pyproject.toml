@@ -71,6 +71,12 @@ vlm = [
     "torch>=2.9.0",
     "accelerate>=1.12.0",
 ]
+# Mapillary download path (geoai_vlm.downloader -> zensvi).
+# Kept out of core: zensvi resolves to ~109 packages including torch,
+# torchvision, transformers and CUDA runtime libraries.
+download = [
+    "zensvi>=1.4.3",
+]
 # Vector search backends.
 search = [
     "chromadb>=1.0.0",
@@ -86,7 +92,7 @@ slope = [
     "streetlevel>=0.12.0",
 ]
 all = [
-    "geoai-vlm[vlm,search,slope]",
+    "geoai-vlm[vlm,search,slope,download]",
 ]
 dev = [
     "pytest>=9.0.0",
