@@ -17,7 +17,7 @@ establish that any design change affects health or behaviour.
 
 | Item | Acceptance |
 |---|---|
-| Vector search contract | A stated metric and ordering direction per backend; a small hand-computable fixture (≈6 vectors) where the expected ranking is written out by hand and both backends must reproduce it; tests for reload, duplicate-id update, delete, empty result and metadata filters |
+| ~~Vector search contract~~ | **Done** — see `review_findings.md`, Phase 0 batch 2a (31 tests). Turned up a further defect: `metric="ip"` with `index_type="ivf"` was building an L2 index. |
 | Vision2Slope parallelism | Worker moved to module level and shown to pickle; model created once per process, not per image; a test asserting the model is constructed once for an N-image batch |
 | `ModelConfig` plumbing | `device` and `cache_dir` shown to reach the model on both the `_create_processor` and `ImageSlopeEstimator` paths |
 | Panorama manifest | Every generated perspective recorded with its source panorama, angle and status; a test that nested folders are fully covered and that the returned file list equals what was produced |

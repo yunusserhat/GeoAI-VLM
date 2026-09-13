@@ -98,17 +98,61 @@ Vision2Slope names remain importable from the top-level package; they resolve on
 first attribute access (PEP 562) and raise a message naming the extra if the
 dependencies are absent.
 
+## Phase 0 batch 2a — vector search contract
+
+Tested against a hand-computable fixture of six unit vectors whose cosine
+similarity to the query can be read off by eye, so the expected ranking is
+written out by hand rather than taken from whatever the library returns
+(`tests/test_vectorstore_contract.py`, 31 tests).
+
+What the backends actually returned, all under one field named `distance`:
+
+| Backend | Raw `distances` for the fixture | Meaning |
+|---|---|---|
+| ChromaDB `cosine` | `0.0, 0.2, 0.4, 1.0, 1.6, 2.0` | distance, lower is closer |
+| FAISS `ip` (**the default**) | `1.0, 0.8, 0.6, 0.0, -0.6, -1.0` | **similarity, higher is closer** |
+| FAISS `l2` | `0.0, 0.4, 0.8, 2.0, 3.2, 4.0` | squared distance, lower is closer |
+
+Sorting results ascending by `distance` therefore returned the *least* similar
+items first on the FAISS default.
+
+| # | Finding | Status |
+|---|---------|--------|
+| V1 | One `distance` field carried three different meanings, one of them inverted | fixed |
+| V2 | `metric="ip"` with `index_type="ivf"` built an **L2** index: `IndexIVFFlat` defaults to `METRIC_L2` regardless of the quantizer, so inner-product searches were silently ranked by L2 | fixed |
+| V3 | Re-adding an existing id appended a second entry in FAISS (count and ids diverged; the stale vector stayed searchable) while ChromaDB upserted | fixed |
+| V4 | `FAISSVectorStore.load` did not restore `metric`, so a persisted `l2` store came back declaring `ip` while its numbers were still L2 | fixed |
+| V5 | IVF with fewer vectors than `nlist` died inside faiss clustering with a bare `RuntimeError` | fixed |
+| V6 | No metadata filtering existed on either backend | added |
+| V7 | IVF searched a single cell (`nprobe` left at 1) | fixed |
+
+### The result contract
+
+Every query result now states what it is:
+
+| Key | Meaning |
+|---|---|
+| `distances` | the backend's raw score, unchanged |
+| `metric` | the backend's own metric name |
+| `direction` | `lower_is_closer` or `higher_is_closer`, describing `distances` |
+| `similarity` | uniform score, **higher is always closer** |
+| `rank` | 0-based, already ordered best-first |
+
+`similarity` is the true cosine similarity where the metric allows it (ChromaDB
+cosine/ip, FAISS ip); for an L2 metric it is the negated distance —
+order-preserving within one store, but not a calibrated cosine and not
+comparable across metrics. `VectorDB.search` returns `id`, `rank`, `similarity`
+and `distance` columns ordered best-first, and reports the metric and direction
+in `df.attrs`.
+
+`query(..., where={"key": "value"})` filters on stored metadata: natively on
+ChromaDB, and by over-fetching then filtering on FAISS so a selective filter
+still returns up to `n_results` rows.
+
 ## Still open — confirmed by reading, not yet fixed
 
 These were reproduced by source inspection in this checkout. None has a
 regression test yet, and none should be treated as closed.
-
-**Vector search**
-- `vectorstore.py` reports both FAISS and Chroma results in a `distance` field
-  without a stated metric or ordering direction.
-- Index reload, duplicate-id update, delete, empty results and metadata filters
-  are exercised only with random vectors; no small hand-checkable reference case.
-- No test covers IVF configuration or differing index types.
 
 **Vision2Slope / scale**
 - `Vision2SlopePipeline.process_batch_parallel` defines its worker inside the
