@@ -43,30 +43,21 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 
+# Core: everything needed for geospatial queries, download, GeoParquet I/O,
+# description parsing, clustering and spatial statistics. Deliberately free of
+# torch/vllm/cv2 so the data layer installs and tests on CPU-only machines.
 dependencies = [
-    # Core dependencies
     "geopandas>=1.1.2",
     "pandas>=2.3.3",
-    "numpy<2.dev0",
+    # No upper bound: the suite passes on numpy 1.26 and 2.4, and pinning
+    # <2 made the slope extra uninstallable (opencv-python>=5 needs numpy>=2).
+    "numpy>=1.24",
     "shapely>=2.1.2",
     "pyarrow>=16.0.0",
     "haversine>=2.9.0",
     "tqdm>=4.67.0",
     "Pillow>=10.0.0",
     "requests>=2.32.5",
-    "zensvi>=1.4.3",
-    "opencv-python>=4.8.0",
-    "scikit-image>=0.21.0",
-    "streetlevel>=0.12.0",
-    "vllm>=0.13.0",
-    "qwen-vl-utils>=0.0.14",
-    "transformers>=4.57.3",
-    "torch>=2.9.0",
-    "accelerate>=1.12.0",
-    # Embedding & vector search
-    "chromadb>=1.0.0",
-    "faiss-cpu>=1.7.0",
-    # Clustering & spatial analysis
     "scikit-learn>=1.4.0",
     "matplotlib>=3.8.0",
     "libpysal>=4.9.0",
@@ -74,6 +65,41 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Running a VLM locally (description + embedding generation).
+vlm = [
+    "vllm>=0.13.0",
+    "qwen-vl-utils>=0.0.14",
+    "transformers>=4.57.3",
+    "torch>=2.9.0",
+    "accelerate>=1.12.0",
+]
+# Mapillary download path (geoai_vlm.downloader -> zensvi).
+# Kept out of core: zensvi resolves to ~109 packages including torch,
+# torchvision, transformers and CUDA runtime libraries.
+download = [
+    "zensvi>=1.4.3",
+]
+# Vector search backends.
+search = [
+    "chromadb>=1.0.0",
+    "faiss-cpu>=1.7.0",
+]
+# Vision2Slope: segmentation, panorama handling and slope estimation.
+slope = [
+    "torch>=2.9.0",
+    "transformers>=4.57.3",
+    "opencv-python>=4.8.0",
+    "scikit-image>=0.21.0",
+    "streetlevel>=0.12.0",
+]
+# Panorama-to-perspective transformation. Split out because zensvi is imported
+# lazily by that one step, so the rest of Vision2Slope runs without it.
+panorama = [
+    "zensvi>=1.4.3",
+]
+all = [
+    "geoai-vlm[vlm,search,slope,download,panorama]",
+]
 dev = [
     "pytest>=9.0.0",
     "pytest-cov>=7.0.0",

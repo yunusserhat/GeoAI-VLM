@@ -45,8 +45,13 @@ class Visualizer(VisualizationProvider):
             self.intermediate_dir = self.output_dir / self.config.intermediate_dir_name
             self.intermediate_dir.mkdir(exist_ok=True, parents=True)
 
-        if self.config.save_segmentation_masks:
-            self.masks_dir = self.output_dir / self.config.masks_dir_name
+        # Both mask outputs write into this directory, so either option alone
+        # has to create it. Guarding only on save_segmentation_masks left
+        # save_road_masks writing to an attribute that did not exist.
+        self.masks_dir = self.output_dir / self.config.masks_dir_name
+        if getattr(self.config, "save_segmentation_masks", False) or getattr(
+            self.config, "save_road_masks", False
+        ):
             self.masks_dir.mkdir(exist_ok=True, parents=True)
 
         if self.config.save_edge_detection:

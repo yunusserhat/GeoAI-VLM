@@ -94,3 +94,8 @@ external/
 # API keys
 .env.local
 .envrc
+
+# Outputs produced by running the example notebooks
+demo_*_output/
+chroma_db/
+faiss_index/

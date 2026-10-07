@@ -3,11 +3,12 @@ Vision2Slope pipeline with clean architecture and parallel processing support.
 """
 
 import logging
+from dataclasses import dataclass
 import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from multiprocessing import Pool, cpu_count
 import numpy as np
 import pandas as pd
@@ -24,6 +25,154 @@ from .analyzers import RoadSlopeAnalyzer
 from .visualizers import Visualizer
 from .utils import Utils
 from .pano2perspective import PanoramaTransformer
+
+
+
+# ---------------------------------------------------------------------------
+# Parallel worker state
+# ---------------------------------------------------------------------------
+# The worker used to be a closure defined inside process_batch_parallel, which
+# captured `self`. multiprocessing sends the callable to the child by pickle, and
+# a local function cannot be pickled, so the parallel path could not start. The
+# closure body also rebuilt the segmentation model on every image; at city scale
+# that dominates the run.
+#
+# The worker is now a module-level function, and the processor is built once per
+# process by the pool initialiser and reused for every image that process takes.
+_WORKER_STATE: Dict[str, Any] = {}
+
+
+@dataclass
+class LegacyComponentConfig:
+    """Settings the legacy detector/corrector/analyzer components read.
+
+    A plain module-level dataclass so it can be pickled into worker processes;
+    the previous adapter built an instance of a class defined inside a method,
+    which cannot cross a process boundary.
+    """
+
+    canny_threshold1: float = 50.0
+    canny_threshold2: float = 150.0
+    hough_threshold: int = 50
+    min_line_length: int = 50
+    max_line_gap: int = 10
+    angle_tolerance: float = 5.0
+    min_edge_points: int = 10
+    use_weighted_average: bool = True
+    morphology_kernel_size: int = 5
+    ransac_residual_threshold: float = 10.0
+    ransac_max_trials: int = 100
+    ransac_random_state: Optional[int] = None
+
+
+def _init_slope_worker(model_name, device, cache_dir, component_config):
+    """Build one processor per worker process and keep it for reuse."""
+    from .analyzers import RoadSlopeAnalyzer
+    from .correctors import ImageCorrector
+    from .detectors import SkewDetector
+
+    segmentation_provider = SegmentationModel(
+        model_name, device=device, cache_dir=cache_dir
+    )
+
+    # No visualizer in workers, to avoid I/O contention between processes.
+    _WORKER_STATE["processor"] = StandardImageProcessor(
+        segmentation_provider=segmentation_provider,
+        skew_detector=SkewDetector(component_config),
+        corrector=ImageCorrector(component_config),
+        slope_analyzer=RoadSlopeAnalyzer(component_config),
+        visualizer=None,
+        logger=logging.getLogger("vision2slope.worker"),
+    )
+
+
+def _slope_worker(image_path: str):
+    """Process one image with this process's already-loaded model."""
+    processor = _WORKER_STATE.get("processor")
+    if processor is None:
+        raise RuntimeError(
+            "slope worker used before _init_slope_worker ran; the pool must be "
+            "created with initializer=_init_slope_worker"
+        )
+    return processor.process(image_path)
+
+
+# ---------------------------------------------------------------------------
+# Record-level accounting
+# ---------------------------------------------------------------------------
+#: Outcome of evaluating one processed image.
+EVALUATION_STATUSES = (
+    "measured",           # produced a usable slope measurement
+    "processing_failed",  # the image never produced a result
+    "angle_filtered",     # measured, but outside the accepted angle range
+    "angle_missing",      # processed successfully but no road edge angle
+)
+
+
+def build_record_table(df: "pd.DataFrame", angle_threshold: float) -> "pd.DataFrame":
+    """Return every processed image with an explicit ``evaluation_status``.
+
+    The evaluation table previously kept only successful, within-threshold rows,
+    and the run summary was computed from it -- so failures and filtered steep
+    angles disappeared from their own denominator. Keeping every input here
+    separates "what happened to each image" from "which measurements qualify".
+    """
+    records = df.copy()
+    if len(records) == 0:
+        records["evaluation_status"] = pd.Series(dtype="object")
+        return records
+
+    status = records.get("status")
+    angle = records.get("road_edge_line_angle")
+
+    failed = status.astype(str).ne("success") if status is not None else False
+    missing = angle.isna() if angle is not None else True
+    steep = (
+        angle.abs() > float(angle_threshold)
+        if angle is not None
+        else False
+    )
+
+    evaluation = np.where(
+        failed,
+        "processing_failed",
+        np.where(missing, "angle_missing", np.where(steep, "angle_filtered", "measured")),
+    )
+    records["evaluation_status"] = evaluation
+    return records
+
+
+def summarise_records(records: "pd.DataFrame") -> Dict[str, Any]:
+    """Summarise a record table over *every* processed image."""
+    total = int(len(records))
+    counts = (
+        records["evaluation_status"].value_counts().to_dict()
+        if total and "evaluation_status" in records.columns
+        else {}
+    )
+    measured = int(counts.get("measured", 0))
+    return {
+        "n_processed": total,
+        "n_measured": measured,
+        "n_processing_failed": int(counts.get("processing_failed", 0)),
+        "n_angle_filtered": int(counts.get("angle_filtered", 0)),
+        "n_angle_missing": int(counts.get("angle_missing", 0)),
+        "measured_rate": (measured / total) if total else 0.0,
+    }
+
+
+def select_pano_metadata(metadata_df: "pd.DataFrame") -> "pd.DataFrame":
+    """Keep every distinct panorama/road-direction pair.
+
+    Dropping duplicates on ``pano_id`` alone kept the first row per panorama, so
+    a panorama matching several road segments lost every direction but one --
+    which is exactly the information a signed slope needs.
+    """
+    subset = ["pano_id"]
+    for column in ("edge_bearing", "heading"):
+        if column in metadata_df.columns:
+            subset.append(column)
+    return metadata_df.drop_duplicates(subset=subset, keep="first")
 
 
 class Vision2SlopePipeline:
@@ -167,7 +316,11 @@ class Vision2SlopePipeline:
         self.logger.info("Initializing pipeline components...")
 
         # Create components (adapting old classes to new interfaces)
-        segmentation_provider = SegmentationModel(self.config.model_config.model_name)
+        segmentation_provider = SegmentationModel(
+            self.config.model_config.model_name,
+            device=self.config.model_config.device,
+            cache_dir=self.config.model_config.cache_dir,
+        )
 
         # Create legacy-compatible config for old components
         legacy_config = self._create_legacy_config()
@@ -189,35 +342,29 @@ class Vision2SlopePipeline:
         self.logger.info("Pipeline components initialized successfully")
         return processor
 
-    def _create_legacy_config(self):
+    def _create_legacy_config(self) -> LegacyComponentConfig:
+        """Build the settings object the legacy components read.
+
+        Returns a module-level dataclass so it can be pickled into worker
+        processes; the previous version defined its class inside this method,
+        which cannot cross a process boundary.
         """
-        Create a legacy config object for compatibility with existing components.
-
-        This is a temporary adapter until all components are refactored.
-        """
-
-        class LegacyConfig:
-            pass
-
-        cfg = LegacyConfig()
-
-        # Detection parameters
-        cfg.canny_threshold1 = self.config.detection_config.canny_threshold1
-        cfg.canny_threshold2 = self.config.detection_config.canny_threshold2
-        cfg.hough_threshold = self.config.detection_config.hough_threshold
-        cfg.min_line_length = self.config.detection_config.min_line_length
-        cfg.max_line_gap = self.config.detection_config.max_line_gap
-        cfg.angle_tolerance = self.config.detection_config.angle_tolerance
-
-        # Analysis parameters
-        cfg.min_edge_points = self.config.analysis_config.min_edge_points
-        cfg.use_weighted_average = self.config.analysis_config.use_weighted_average
-        cfg.morphology_kernel_size = self.config.analysis_config.morphology_kernel_size
-        cfg.ransac_residual_threshold = self.config.analysis_config.ransac_residual_threshold
-        cfg.ransac_max_trials = self.config.analysis_config.ransac_max_trials
-        cfg.ransac_random_state = self.config.analysis_config.ransac_random_state
-
-        return cfg
+        detection = self.config.detection_config
+        analysis = self.config.analysis_config
+        return LegacyComponentConfig(
+            canny_threshold1=detection.canny_threshold1,
+            canny_threshold2=detection.canny_threshold2,
+            hough_threshold=detection.hough_threshold,
+            min_line_length=detection.min_line_length,
+            max_line_gap=detection.max_line_gap,
+            angle_tolerance=detection.angle_tolerance,
+            min_edge_points=analysis.min_edge_points,
+            use_weighted_average=analysis.use_weighted_average,
+            morphology_kernel_size=analysis.morphology_kernel_size,
+            ransac_residual_threshold=analysis.ransac_residual_threshold,
+            ransac_max_trials=analysis.ransac_max_trials,
+            ransac_random_state=analysis.ransac_random_state,
+        )
 
     def process_batch(self) -> pd.DataFrame:
         """
@@ -245,6 +392,8 @@ class Vision2SlopePipeline:
 
         csv_path = self._save_results(df)
 
+        records = self._build_and_save_records(df)
+
         # Post-process for bi-directional slope estimation
         bi_estimate_df = self._bi_slope_estimate(df, csv_path)
 
@@ -252,8 +401,8 @@ class Vision2SlopePipeline:
         if self.config.viz_config.save_intermediate_results:
             self._save_intermediate_results(df)
 
-        # Print summary
-        self._print_summary(bi_estimate_df)
+        # Summarise over every processed image, not over the filtered subset.
+        self._print_summary(records)
 
         return bi_estimate_df
 
@@ -282,40 +431,25 @@ class Vision2SlopePipeline:
 
         self.logger.info(f"Found {len(image_files)} images to process")
 
-        # Create a worker function that doesn't rely on instance state
-        def process_image_worker(image_path: str) -> ProcessingResult:
-            """Worker function for multiprocessing."""
-            # Create a new processor instance in each worker
-            from .models import SegmentationModel
-            from .detectors import SkewDetector
-            from .correctors import ImageCorrector
-            from .analyzers import RoadSlopeAnalyzer
+        # The processor is built once per worker process by the initialiser and
+        # reused for every image that process handles, instead of being rebuilt
+        # for each image as the previous closure did.
+        model_config = self.config.model_config
+        init_args = (
+            model_config.model_name,
+            model_config.device,
+            model_config.cache_dir,
+            self._create_legacy_config(),
+        )
 
-            # Use minimal visualization in workers (save only essentials)
-            segmentation_provider = SegmentationModel(self.config.model_config.model_name)
-
-            legacy_config = self._create_legacy_config()
-            skew_detector = SkewDetector(legacy_config)
-            corrector = ImageCorrector(legacy_config)
-            slope_analyzer = RoadSlopeAnalyzer(legacy_config)
-
-            # No visualizer in workers to avoid I/O contention
-            processor = StandardImageProcessor(
-                segmentation_provider=segmentation_provider,
-                skew_detector=skew_detector,
-                corrector=corrector,
-                slope_analyzer=slope_analyzer,
-                visualizer=None,
-                logger=logging.getLogger("vision2slope.worker"),
-            )
-
-            return processor.process(image_path)
-
-        # Process in parallel
-        with Pool(processes=num_workers) as pool:
+        with Pool(
+            processes=num_workers,
+            initializer=_init_slope_worker,
+            initargs=init_args,
+        ) as pool:
             results = list(
                 tqdm(
-                    pool.imap(process_image_worker, [str(f) for f in image_files]),
+                    pool.imap(_slope_worker, [str(f) for f in image_files]),
                     total=len(image_files),
                     desc="Processing images (parallel)",
                 )
@@ -325,13 +459,16 @@ class Vision2SlopePipeline:
         df = self._results_to_dataframe(results)
         csv_path = self._save_results(df)
 
+        records = self._build_and_save_records(df)
+
         # Post-process
         bi_estimate_df = self._bi_slope_estimate(df, csv_path)
 
         if self.config.viz_config.save_intermediate_results:
             self._save_intermediate_results(df)
 
-        self._print_summary(bi_estimate_df)
+        # Summarise over every processed image, not over the filtered subset.
+        self._print_summary(records)
 
         return bi_estimate_df
 
@@ -403,7 +540,7 @@ class Vision2SlopePipeline:
         if metadata_csv_path is not None:
             metadata_df = pd.read_csv(metadata_csv_path)
             metadata_df["pano_id"] = metadata_df["pano_id"].astype(str)
-            metadata_df = metadata_df.drop_duplicates(subset="pano_id", keep="first")
+            metadata_df = select_pano_metadata(metadata_df)
 
             required_cols = {"pano_id", "heading", "edge_bearing"}
             if required_cols.issubset(metadata_df.columns):
@@ -518,6 +655,24 @@ class Vision2SlopePipeline:
 
         self.logger.info(f"Intermediate results saved to: {intermediate_dir}")
 
+    def _build_and_save_records(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Build the record-level table and write it next to the results CSV.
+
+        The measurement subset returned by :meth:`_bi_slope_estimate` answers
+        "which measurements qualify"; this table answers "what happened to every
+        image", and is what the run summary is computed from.
+        """
+        records = build_record_table(
+            df, angle_threshold=self.config.analysis_config.filter_slope_angle
+        )
+        self.records_ = records
+
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        records_path = self.output_path / f"vision2slope_records_{timestamp}.csv"
+        records.to_csv(records_path, index=False)
+        self.logger.info(f"Record-level table saved to: {records_path}")
+        return records
+
     def _print_summary(self, df: pd.DataFrame):
         """Print processing summary statistics."""
         if df is None or df.empty:
@@ -536,23 +691,37 @@ class Vision2SlopePipeline:
             percentage = (count / total * 100) if total > 0 else 0
             self.logger.info(f"  {status}: {count} ({percentage:.1f}%)")
 
+        # Every processed image is accounted for here, including the ones that
+        # failed or were filtered out by the angle threshold.
+        if "evaluation_status" in df.columns:
+            summary = summarise_records(df)
+            self.logger.info("\nEvaluation outcome (denominator = all processed):")
+            self.logger.info(f"  processed:         {summary['n_processed']}")
+            self.logger.info(f"  measured:          {summary['n_measured']}")
+            self.logger.info(f"  processing_failed: {summary['n_processing_failed']}")
+            self.logger.info(f"  angle_filtered:    {summary['n_angle_filtered']}")
+            self.logger.info(f"  angle_missing:     {summary['n_angle_missing']}")
+            self.logger.info(f"  measured rate:     {summary['measured_rate'] * 100:.1f}%")
+
         # Statistics for successful results
         successful_df = df[df["status"] == "success"]
         if len(successful_df) > 0:
             self.logger.info("\nSuccessful Results Statistics:")
-            self.logger.info(f"  Avg skew angle: {successful_df['skew_angle'].mean():.2f}°")
-            self.logger.info(
-                f"  Avg road edge line slope: {successful_df['road_edge_line_slope'].mean():.4f}"
+            # Report whichever statistics are present. The summary runs after
+            # all the work is done, so a missing column must not discard the run.
+            stats = (
+                ("Avg skew angle", "skew_angle", "{:.2f}°"),
+                ("Avg road edge line slope", "road_edge_line_slope", "{:.4f}"),
+                ("Avg road edge line angle", "road_edge_line_angle", "{:.2f}°"),
+                ("Avg road area", "road_area", "{:.0f} pixels"),
+                ("Avg road estimated slope", "road_estimated_slope", "{:.2f}°"),
             )
-            self.logger.info(
-                f"  Avg road edge line angle: {successful_df['road_edge_line_angle'].mean():.2f}°"
-            )
-            self.logger.info(f"  Avg road area: {successful_df['road_area'].mean():.0f} pixels")
-
-            if "road_estimated_slope" in successful_df.columns:
-                avg_estimated_slope = successful_df["road_estimated_slope"].mean()
-                self.logger.info(
-                    f"  Avg road estimated slope: {avg_estimated_slope:.2f}°"
-                )
+            for label, column, fmt in stats:
+                if column not in successful_df.columns:
+                    continue
+                value = pd.to_numeric(successful_df[column], errors="coerce").mean()
+                if pd.isna(value):
+                    continue
+                self.logger.info(f"  {label}: {fmt.format(value)}")
 
         self.logger.info("=" * 60)
