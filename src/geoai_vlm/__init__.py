@@ -211,6 +211,26 @@ from .segments import (
     write_segment_parquet,
 )
 from .coverage import coverage_by_area, network_coverage, recency_report
+from .evaluation import (
+    SplitLeakageError,
+    agreement_report,
+    assign_spatial_blocks,
+    bland_altman,
+    check_split_leakage,
+    cluster_bootstrap_ci,
+    cohen_kappa,
+    generation_stability,
+    grouped_split,
+    icc,
+    light_condition,
+    percent_agreement,
+    r_squared,
+    repeated_generation,
+    sequence_split,
+    solar_elevation,
+    spatial_block_split,
+    stratified_reference_sample,
+)
 
 from .visualization import (
     plot_elbow_curve,
@@ -357,6 +377,26 @@ __all__ = [
     "network_coverage",
     "coverage_by_area",
     "recency_report",
+
+    # Evaluation
+    "SplitLeakageError",
+    "grouped_split",
+    "sequence_split",
+    "assign_spatial_blocks",
+    "spatial_block_split",
+    "check_split_leakage",
+    "percent_agreement",
+    "cohen_kappa",
+    "icc",
+    "r_squared",
+    "bland_altman",
+    "cluster_bootstrap_ci",
+    "agreement_report",
+    "repeated_generation",
+    "generation_stability",
+    "solar_elevation",
+    "light_condition",
+    "stratified_reference_sample",
 
     # Visualization
     "plot_elbow_curve",
