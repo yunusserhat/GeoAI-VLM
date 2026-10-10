@@ -210,6 +210,7 @@ from .segments import (
     snap_images_to_segments,
     write_segment_parquet,
 )
+from .coverage import coverage_by_area, network_coverage, recency_report
 
 from .visualization import (
     plot_elbow_curve,
@@ -344,7 +345,7 @@ __all__ = [
     "ProcessingStatus",
     "ProcessingStage",
     
-    # Street-segment indicators
+    # Street-segment indicators and coverage
     "SEGMENT_DEFAULTS",
     "prepare_segments",
     "segments_from_graph",
@@ -353,6 +354,9 @@ __all__ = [
     "aggregate_segments",
     "write_segment_parquet",
     "read_segment_metadata",
+    "network_coverage",
+    "coverage_by_area",
+    "recency_report",
 
     # Visualization
     "plot_elbow_curve",
