@@ -116,7 +116,10 @@ class OpenAICompatibleBackend(_ChatBackend):
             rejects it as unsupported by the chat template, retries with the
             system text prepended. ``"system"`` / ``"prepend"`` force a form.
         structured_output: Send ``response_format`` with the JSON schema. If
-            the server rejects it, falls back to unconstrained decoding.
+            the server rejects it, falls back to unconstrained decoding. A
+            server that accepts it is recorded as
+            ``decoding_mode="json_schema_requested"``: whether it enforces the
+            schema is server-specific and cannot be verified by the client.
         json_schema: The response schema.
         revision: Model revision the server runs, if you know it. It is
             recorded as given; the server's actual revision cannot be verified.
@@ -404,9 +407,13 @@ class OpenAICompatibleBackend(_ChatBackend):
             structured = self.wants_structured and self._structured_supported is not False
             try:
                 data = self._request("POST", "chat/completions", self._payload(messages, structured))
+                # A server can accept response_format and still ignore it
+                # (transformers serve 5.19 does, with only a log line), so the
+                # client records what it knows: the schema was requested and
+                # not rejected. Enforcement is up to the server.
                 return GenerationOutput(
                     text=self._reply_text(data),
-                    decoding_mode="json_schema" if structured else "unconstrained",
+                    decoding_mode="json_schema_requested" if structured else "unconstrained",
                     system_prompt_mode=mode,
                 )
             except OpenAICompatibleError as exc:

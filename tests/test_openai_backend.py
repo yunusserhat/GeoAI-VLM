@@ -273,7 +273,8 @@ class TestFallbacks:
         fmt = server.requests[0]["body"]["response_format"]
         assert fmt["type"] == "json_schema"
         assert fmt["json_schema"]["schema"] == self.SCHEMA
-        assert out[0].decoding_mode == "json_schema"
+        # Accepted is not the same as enforced: the client cannot tell.
+        assert out[0].decoding_mode == "json_schema_requested"
 
     def test_rejected_response_format_falls_back(self, server):
         server.reject_response_format = True
@@ -376,7 +377,7 @@ class TestDescriberIntegration:
         df = d.describe(image_paths=paths)
         assert list(df["scene_narrative"]) == ["image 1", "image 2"]
         assert set(df["backend"]) == {"openai"}
-        assert set(df["decoding_mode"]) == {"json_schema"}
+        assert set(df["decoding_mode"]) == {"json_schema_requested"}
         assert set(df["system_prompt_mode_effective"]) == {"system"}
         assert df["model_revision"].isna().all(), "a server's revision is not observable"
         params = json.loads(df.iloc[0]["generation_params"])

@@ -71,7 +71,9 @@ class GenerationOutput:
         error: Set when no response could be generated for this item. The
             description record is then marked as failed and retried on resume.
         decoding_mode: ``"json_schema"`` when decoding was constrained by a
-            JSON schema, ``"unconstrained"`` otherwise.
+            JSON schema locally (vLLM), ``"json_schema_requested"`` when the
+            schema was sent to a server that accepted it (enforcement is up to
+            the server), ``"unconstrained"`` otherwise.
         system_prompt_mode: ``"system"``, ``"prepend"`` or ``"none"`` -- how the
             system prompt actually reached the model.
     """
