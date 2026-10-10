@@ -90,6 +90,12 @@ qwen = [
 quant = [
     "bitsandbytes>=0.45.0",
 ]
+# Semantic segmentation measurements (class pixel fractions) with a
+# Cityscapes-trained Transformers model.
+segment = [
+    "transformers>=4.57.3",
+    "torch>=2.9.0",
+]
 # Downloading street networks from OpenStreetMap for segment indicators.
 # Segment matching and aggregation themselves only need the core install.
 network = [
@@ -120,7 +126,7 @@ panorama = [
     "zensvi>=1.4.3",
 ]
 all = [
-    "geoai-vlm[vlm,qwen,quant,network,search,slope,download,panorama]",
+    "geoai-vlm[vlm,qwen,quant,network,segment,search,slope,download,panorama]",
 ]
 dev = [
     "pytest>=9.0.0",

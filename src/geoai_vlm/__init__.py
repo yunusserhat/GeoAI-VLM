@@ -211,6 +211,15 @@ from .segments import (
     write_segment_parquet,
 )
 from .coverage import coverage_by_area, network_coverage, recency_report
+from .segmentation import (
+    CITYSCAPES_19,
+    LabelMapping,
+    LabelMappingError,
+    SemanticSegmenter,
+    check_label_mapping,
+    class_pixel_fractions,
+    mapping_from_id2label,
+)
 from .evaluation import (
     SplitLeakageError,
     agreement_report,
@@ -377,6 +386,15 @@ __all__ = [
     "network_coverage",
     "coverage_by_area",
     "recency_report",
+
+    # Segmentation measurements
+    "CITYSCAPES_19",
+    "LabelMapping",
+    "LabelMappingError",
+    "SemanticSegmenter",
+    "check_label_mapping",
+    "class_pixel_fractions",
+    "mapping_from_id2label",
 
     # Evaluation
     "SplitLeakageError",
