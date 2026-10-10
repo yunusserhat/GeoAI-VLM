@@ -2,7 +2,7 @@
 
 ## Vision2Slope
 
-GeoAI-VLM v0.3 vendors modules and road slope estimation helpers from Vision2Slope:
+GeoAI-VLM vendors modules and road slope estimation helpers from Vision2Slope (since v0.3):
 
 - Repository: https://github.com/CubicsYang/Vision2Slope
 
@@ -31,3 +31,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Runtime resources (not distributed)
+
+No other third-party code is vendored. The optional research demo
+(`geoai_vlm.app`) makes the viewer's browser load, at run time:
+
+- Leaflet 1.9.4 from unpkg.com (BSD 2-Clause License, https://leafletjs.com),
+- map tiles from tile.openstreetmap.org (data (c) OpenStreetMap contributors,
+  ODbL; use is subject to the OpenStreetMap tile usage policy).
+
+`examples/build_demo_index.py` reads part of the dataset `yunusserhat/fatih`
+(CC BY-SA 4.0, doi:10.57967/hf/10144; imagery and image metadata from
+Mapillary contributors, CC BY-SA 4.0). Nothing from it is included in this
+repository or its packages; the attribution is written into the index it
+builds.

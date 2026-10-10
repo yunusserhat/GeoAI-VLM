@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geoai-vlm"
-version = "0.3"
-description = "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
+version = "0.4.0"
+description = "Geospatial vision-language model analysis for street-level imagery: model-agnostic VLM descriptions, embeddings, street-segment indicators, coverage and evaluation tools."
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
 authors = [
@@ -28,20 +28,22 @@ keywords = [
     "multimodal",
     "road-slope",
     "slope-estimation",
+    "active-mobility",
+    "street-segments",
+    "openai-compatible",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 # Core: everything needed for geospatial queries, download, GeoParquet I/O,
 # description parsing, clustering and spatial statistics. Deliberately free of

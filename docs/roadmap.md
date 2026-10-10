@@ -1,9 +1,22 @@
 # Roadmap
 
-Phase 0 batch 1 is implemented (see `review_findings.md`). Everything below is
-proposed, not built. Each phase lists what it depends on and what would count as
-done, so a phase can be accepted or rejected on evidence rather than on the
-existence of code.
+Phase 0 batch 1 is implemented (see `review_findings.md`). Each phase lists
+what it depends on and what would count as done, so a phase can be accepted or
+rejected on evidence rather than on the existence of code.
+
+## Status after 0.4.0
+
+0.4.0 implements part of Phase 1 and small parts of Phases 2, 5 and 6
+(model-agnostic backends, provenance, an observation template, street-segment
+indicators, coverage, evaluation tools and a local demo). Below, each
+acceptance criterion is marked:
+
+* ✅ met in 0.4.0, with the module and tests that show it
+* ◐ partly met -- what is still missing is stated
+* ☐ open
+
+Nothing was marked met without a test. Real-model evidence is in
+[models.md](models.md).
 
 Nothing in this roadmap should be read as a claim about health outcomes. The
 package produces street-level measurements and their provenance; it does not
@@ -41,19 +54,34 @@ estimates, human annotations, and any later design suggestion — these must not
 collapse into one table.
 
 **Acceptance**
-- Not-visible, not-present, not-assessed and failed-to-process are four
+- ✅ Not-visible, not-present, not-assessed and failed-to-process are four
   distinguishable values; no unknown is written as `0` or as a safe default.
-- Segmentation label mappings are versioned and named; Cityscapes and Mapillary
-  ids are never assumed equal.
-- Green-pixel fraction is named as an image measurement, not as human green-space
-  exposure; a daytime image yields no night-lighting claim.
-- Interruption and resume: a killed run resumes without duplicating successful
+  *0.4.0: the observation template keeps `present`, `absent`, `not_visible`,
+  `uncertain`, `not_assessed`, `invalid` and `failed` apart, and segment
+  summaries count them separately (`audit.py`, `segments.py`;
+  `test_audit_template.py`, `test_segments.py`).*
+- ✅ Segmentation label mappings are versioned and named; Cityscapes and Mapillary
+  ids are never assumed equal. *`segmentation.py` (`cityscapes-19@1`, checked
+  against the model on load); `test_segmentation.py`.*
+- ✅ Green-pixel fraction is named as an image measurement, not as human green-space
+  exposure; a daytime image yields no night-lighting claim. *Columns are
+  `<class>_pixel_fraction`; the template records light-pole presence only.*
+- ◐ Interruption and resume: a killed run resumes without duplicating successful
   records and without permanently skipping failed ones (batch 1 covers the
-  describer; this extends it to every step).
-- Cache key covers input **and** processing configuration.
-- Writes are chunked; a batch does not rewrite the whole table.
-- A data card states coverage, gaps, quality filters and redistribution limits.
-- A publication gate blocks any content lacking source and permission metadata.
+  describer; this extends it to every step). *Describer only (now also on
+  generation errors); embedding and later steps not yet.*
+- ◐ Cache key covers input **and** processing configuration. *The describer's
+  `processing_id` covers model, revision, prompt and output-affecting
+  generation settings (`test_provenance.py`); other steps not yet.*
+- ☐ Writes are chunked; a batch does not rewrite the whole table.
+- ☐ A data card states coverage, gaps, quality filters and redistribution limits.
+  *`coverage.py` computes the coverage part; no data card yet.*
+- ☐ A publication gate blocks any content lacking source and permission metadata.
+
+*Per-derived-output record:* model id ✅, revision ✅, prompt version ✅,
+config digest ✅ (`generation_params`), processing time ✅, status ✅;
+code version ☐ (the library version of the backend is recorded, the
+geoai-vlm version is not).
 
 **Open question for you:** redistribution terms differ for source imagery and for
 derived products. I have not assumed any licence for either.
@@ -69,17 +97,25 @@ embedding dimension, normalisation, clustering settings and every randomness
 source. **Running a profile reproduces a configuration, not a published result.**
 
 **Acceptance**
-- Image-only, text-only and joint-representation runs use the same sample ids;
+- ☐ Image-only, text-only and joint-representation runs use the same sample ids;
   samples that shift because a modality is missing are reported separately.
-- A fitted clustering model can be reused; transfer experiments never re-fit on
+- ☐ A fitted clustering model can be reused; transfer experiments never re-fit on
   held-out data.
-- Sequence-disjoint and spatial-block evaluation splits; no panorama or near
-  duplicate spans train and test.
-- Task-appropriate metrics: per-class overlap for segmentation, error and
+- ◐ Sequence-disjoint and spatial-block evaluation splits; no panorama or near
+  duplicate spans train and test. *Sequence and block splits with a leakage
+  check, and a combined mode where neither spans the split
+  (`evaluation.py`, `test_evaluation.py`); a panorama id can be passed as
+  another group column; near-duplicate detection is open.*
+- ◐ Task-appropriate metrics: per-class overlap for segmentation, error and
   agreement for indicator estimates, ranking quality against relevance judgements
-  for retrieval. No single overall accuracy score.
-- Uncertainty accounts for sequence and spatial dependence.
-- Inter-rater disagreement is retained, not averaged away.
+  for retrieval. No single overall accuracy score. *Agreement for indicator
+  estimates (kappa, ICC, R-squared, Bland-Altman) is done; per-class overlap
+  and retrieval ranking metrics are open.*
+- ✅ Uncertainty accounts for sequence and spatial dependence. *Cluster
+  bootstrap over sequences or blocks; a test shows it widens intervals on
+  clustered data.*
+- ◐ Inter-rater disagreement is retained, not averaged away. *Pairwise
+  agreement keeps each pair; multi-rater handling is open.*
 - Cluster labels are never treated as ordered magnitudes.
 - Slope outputs distinguish raw image angle, camera-geometry-corrected estimate,
   and independently measured physical gradient.
@@ -159,24 +195,35 @@ data that *may* be supplied later; explicit spatial and temporal matching,
 coverage differences and unit of analysis.
 
 **Acceptance**
-- Raw individual GPS traces never reach a public interface; prototyping uses
+- ☐ Raw individual GPS traces never reach a public interface; prototyping uses
   aggregated or synthetic samples, and synthetic data is labelled as such.
-- Participant quotes are never invented; what people said and what a model
+  *(No mobility data is handled yet; test fixtures are labelled synthetic.)*
+- ☐ Participant quotes are never invented; what people said and what a model
   summarised are separate fields.
-- Visual similarity search is kept distinct from research-evidence search.
-- Recommendation output has separate fields for observation, design option
+- ◐ Visual similarity search is kept distinct from research-evidence search.
+  *Only visual / description search exists; there is no evidence search yet.*
+- ◐ Recommendation output has separate fields for observation, design option
   considered, supporting research source, local applicability rationale,
   uncertainty and missing information — and can decline to produce a
-  recommendation when evidence is insufficient.
-- The evidence collection starts small and verified, recording each source's
+  recommendation when evidence is insufficient. *No recommendations are
+  produced. The demo's grounded answers do decline without evidence and cite
+  their records (`service.py`, `test_service.py`).*
+- ◐ The evidence collection starts small and verified, recording each source's
   setting, study design and relevant finding. Association is not reported as
-  causation. No unsupported composite health or walkability score.
-- Research texts, retrieval results and user feedback are treated as data;
+  causation. No unsupported composite health or walkability score. *No
+  composite score exists anywhere in the package; no evidence collection yet.*
+- ◐ Research texts, retrieval results and user feedback are treated as data;
   instructions inside them never change system behaviour. API keys, private
-  paths and personal data never enter model inputs or logs.
+  paths and personal data never enter model inputs or logs. *Retrieved
+  records are passed as delimited data with an instruction to ignore
+  instructions inside them, and replies must cite retrieved ids; a model can
+  still disobey, so this reduces rather than removes the risk. API keys are
+  read from a named variable and redacted from logs, errors and records
+  (`test_openai_backend.py`).*
 
 **Open question:** study area must stay configurable. The pilot area and data
-access need your confirmation before anything is hard-coded.
+access need your confirmation before anything is hard-coded. *0.4.0 hard-codes
+no area: networks, areas and datasets are parameters.*
 
 ---
 
@@ -188,8 +235,14 @@ One interface technology, chosen to fit the existing architecture — not a Grad
 app and a Streamlit app. Data processing and recommendation logic stay
 independent of the interface.
 
+*0.4.0 has a first local demo (`app.py` over `service.py`): one interface
+technology (Gradio), logic independent of it, local only. It is a
+demonstration, not this phase's evaluable interface.*
+
 **Acceptance**
-- The map shows image coverage, capture time and missing data.
+- ◐ The map shows image coverage, capture time and missing data. *It shows
+  scenes and their observed states; coverage and capture time are not on the
+  map yet.*
 - A user can inspect the original image, its masks, the model output and the
   supporting source.
 - Scientific evaluation results and the short user-facing explanation are
@@ -198,8 +251,9 @@ independent of the interface.
   recommendation; feedback does not become training data without review.
 - Setup instructions, a small sample dataset, a data card, experiment configs and
   a known-limitations list ship with it.
-- It runs locally first; data permissions and privacy controls are verified
-  before any public deployment.
+- ◐ It runs locally first; data permissions and privacy controls are verified
+  before any public deployment. *Local only (127.0.0.1, no share link);
+  permission and privacy review before any deployment is open.*
 
 No claim of a co-designed or validated system is made without actual municipal
 or participant evaluation.
