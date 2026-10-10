@@ -10,14 +10,20 @@ from __future__ import annotations
 
 from typing import Dict, Any
 
+from .schemas import SIMPLE_JSON_SCHEMA, descriptive_to_json_schema
+
 
 __all__ = [
     "GEOAI_SYSTEM_PROMPT",
     "GEOAI_USER_PROMPT",
     "GEOAI_SCHEMA",
+    "GEOAI_JSON_SCHEMA",
     "SIMPLE_SYSTEM_PROMPT",
     "SIMPLE_USER_PROMPT",
+    "SIMPLE_JSON_SCHEMA",
+    "PROMPT_TEMPLATES",
     "get_prompt_template",
+    "list_prompt_templates",
 ]
 
 
@@ -85,6 +91,12 @@ GEOAI_SCHEMA: Dict[str, Any] = {
     },
     "semantic_tags": "list of 5-10 keywords for embedding/clustering"
 }
+
+
+#: ``GEOAI_SCHEMA`` as a JSON Schema, for validation and constrained decoding.
+#: Every closed vocabulary also admits "unknown" and every boolean admits null,
+#: so constrained decoding never forces a guess.
+GEOAI_JSON_SCHEMA: Dict[str, Any] = descriptive_to_json_schema(GEOAI_SCHEMA)
 
 
 # =============================================================================
@@ -210,18 +222,29 @@ Return JSON with "description" (2-3 sentences) and "tags" (5-10 keywords)."""
 # =============================================================================
 # Prompt Templates
 # =============================================================================
+# Each template: "system" and "user" prompts, the descriptive "schema" shown to
+# the model, and a machine-readable "json_schema" used for validation and,
+# when requested, constrained decoding. A template may also provide
+# "flatten", turning a parsed response into extra flat record columns.
 PROMPT_TEMPLATES = {
     "geoai": {
         "system": GEOAI_SYSTEM_PROMPT,
         "user": GEOAI_USER_PROMPT,
         "schema": GEOAI_SCHEMA,
+        "json_schema": GEOAI_JSON_SCHEMA,
     },
     "simple": {
         "system": SIMPLE_SYSTEM_PROMPT,
         "user": SIMPLE_USER_PROMPT,
         "schema": {"description": "string", "tags": "list"},
+        "json_schema": SIMPLE_JSON_SCHEMA,
     },
 }
+
+
+def list_prompt_templates() -> list:
+    """Names of the available prompt templates."""
+    return sorted(PROMPT_TEMPLATES)
 
 
 def get_prompt_template(template_name: str = "geoai") -> Dict[str, Any]:
@@ -229,10 +252,11 @@ def get_prompt_template(template_name: str = "geoai") -> Dict[str, Any]:
     Get a prompt template by name.
     
     Args:
-        template_name: Name of the template ("geoai" or "simple")
+        template_name: Name of the template (see :func:`list_prompt_templates`)
         
     Returns:
-        Dictionary with "system", "user", and "schema" keys
+        Dictionary with "system", "user", "schema" and "json_schema" keys
+        (and "flatten" where the template defines one)
         
     Raises:
         ValueError: If template_name is not found

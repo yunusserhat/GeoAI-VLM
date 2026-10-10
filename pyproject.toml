@@ -65,13 +65,30 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Running a VLM locally (description + embedding generation).
+# Running a VLM locally (description + embedding generation) with vLLM on a
+# GPU, or with Transformers. The vLLM path is model-agnostic (LLM.chat) and no
+# longer needs a model-family helper package.
 vlm = [
     "vllm>=0.13.0",
-    "qwen-vl-utils>=0.0.14",
     "transformers>=4.57.3",
     "torch>=2.9.0",
     "accelerate>=1.12.0",
+]
+# Local inference with Transformers only (CPU, Apple silicon, or a GPU
+# without vLLM). Also enough for the CLIP-family embedding backend.
+transformers = [
+    "transformers>=4.57.3",
+    "torch>=2.9.0",
+    "accelerate>=1.12.0",
+]
+# Qwen3-VL-Embedding through Transformers still uses Qwen's own vision
+# preprocessing helper; nothing else in the package needs it.
+qwen = [
+    "qwen-vl-utils>=0.0.14",
+]
+# 4-bit / 8-bit loading for the Transformers backend (CUDA).
+quant = [
+    "bitsandbytes>=0.45.0",
 ]
 # Mapillary download path (geoai_vlm.downloader -> zensvi).
 # Kept out of core: zensvi resolves to ~109 packages including torch,
@@ -98,7 +115,7 @@ panorama = [
     "zensvi>=1.4.3",
 ]
 all = [
-    "geoai-vlm[vlm,search,slope,download,panorama]",
+    "geoai-vlm[vlm,qwen,quant,search,slope,download,panorama]",
 ]
 dev = [
     "pytest>=9.0.0",
@@ -115,6 +132,7 @@ Repository = "https://github.com/yunusserhat/geoai-vlm"
 Issues = "https://github.com/yunusserhat/geoai-vlm/issues"
 
 [project.scripts]
+geoai-vlm = "geoai_vlm.cli:main"
 vision2slope = "geoai_vlm.vision2slope.cli:main"
 
 [tool.hatch.build.targets.wheel]

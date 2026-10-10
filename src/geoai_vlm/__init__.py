@@ -8,7 +8,8 @@ and generating structured descriptions using Vision-Language Models.
 
 Features:
 - Geospatial queries: Point, Line, Polygon, BBox, Place name
-- VLM backends: VLLM (high-performance) and Transformers (fallback)
+- Model-agnostic VLM backends: vLLM (LLM.chat), Transformers
+  (AutoModelForImageTextToText) and any OpenAI-compatible server
 - GeoParquet output with native geometry columns
 - Automatic distance calculations (haversine)
 - Resume support for incremental processing
@@ -28,7 +29,24 @@ __version__ = "0.3"
 __author__ = "GeoAI Research"
 
 # Core classes
-from .describer import ImageDescriber, VLLMBackend, TransformersBackend, parse_json_response
+from .describer import (
+    BaseBackend,
+    DESCRIPTION_COLUMNS,
+    ImageDescriber,
+    RemoteCodeRequiredError,
+    TransformersBackend,
+    VLLMBackend,
+    parse_json_response,
+)
+from .openai_compat import OpenAICompatibleBackend, OpenAICompatibleError
+from .chat import (
+    GenerationOutput,
+    build_chat_messages,
+    make_synthetic_street_image,
+    resolve_system_prompt_mode,
+)
+from .models import ModelCheckReport, check_model
+from .provenance import compute_processing_id, resolve_model_revision
 from .downloader import MapillaryDownloader, download_images
 from .geometry import (
     BaseQuery,
@@ -68,11 +86,14 @@ from .prompts import (
     GEOAI_SYSTEM_PROMPT,
     GEOAI_USER_PROMPT,
     GEOAI_SCHEMA,
+    GEOAI_JSON_SCHEMA,
     SIMPLE_SYSTEM_PROMPT,
     SIMPLE_USER_PROMPT,
     get_prompt_template,
+    list_prompt_templates,
     create_custom_prompt,
 )
+from .schemas import validate_json
 
 # New modules – embedding, vector store, clustering, spatial, visualization, preparation
 from .embedding import ImageEmbedder, TransformersEmbeddingBackend, VLLMEmbeddingBackend
@@ -211,8 +232,23 @@ __all__ = [
     "BaseQuery",
     
     # Backends
+    "BaseBackend",
     "VLLMBackend",
     "TransformersBackend",
+    "OpenAICompatibleBackend",
+    "OpenAICompatibleError",
+    "RemoteCodeRequiredError",
+    "DESCRIPTION_COLUMNS",
+
+    # Chat construction and model checks
+    "GenerationOutput",
+    "build_chat_messages",
+    "resolve_system_prompt_mode",
+    "make_synthetic_street_image",
+    "ModelCheckReport",
+    "check_model",
+    "compute_processing_id",
+    "resolve_model_revision",
     
     # Embedding
     "ImageEmbedder",
@@ -314,10 +350,13 @@ __all__ = [
     "GEOAI_SYSTEM_PROMPT",
     "GEOAI_USER_PROMPT",
     "GEOAI_SCHEMA",
+    "GEOAI_JSON_SCHEMA",
     "SIMPLE_SYSTEM_PROMPT",
     "SIMPLE_USER_PROMPT",
     "get_prompt_template",
+    "list_prompt_templates",
     "create_custom_prompt",
+    "validate_json",
     
     # Utilities
     "parse_json_response",
