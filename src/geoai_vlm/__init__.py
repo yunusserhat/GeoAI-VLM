@@ -95,6 +95,15 @@ from .prompts import (
     create_custom_prompt,
 )
 from .schemas import validate_json
+from .audit import (
+    AUDIT_COLUMNS,
+    AUDIT_ITEMS,
+    AUDIT_JSON_SCHEMA,
+    audit_table,
+    flatten_audit_response,
+    normalize_audit_response,
+    validate_audit_response,
+)
 
 # New modules – embedding, vector store, clustering, spatial, visualization, preparation
 from .embedding import (
@@ -364,6 +373,15 @@ __all__ = [
     "list_prompt_templates",
     "create_custom_prompt",
     "validate_json",
+
+    # Active mobility audit (observation template)
+    "AUDIT_ITEMS",
+    "AUDIT_COLUMNS",
+    "AUDIT_JSON_SCHEMA",
+    "audit_table",
+    "flatten_audit_response",
+    "normalize_audit_response",
+    "validate_audit_response",
     
     # Utilities
     "parse_json_response",
