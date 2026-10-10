@@ -70,6 +70,28 @@ GROUNDED_SYSTEM_PROMPT = (
 
 _REFUSAL_TOKEN = "INSUFFICIENT_EVIDENCE"
 _CITATION = re.compile(r"\[([^\[\]\s][^\[\]]*)\]")
+# A sentence ends at . ! or ? followed by space, unless a citation follows
+# ("... trees. [img_1]"): that citation still belongs to the sentence.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?!\[)")
+# Full stops of common abbreviations do not end a sentence.
+_ABBREVIATION = re.compile(r"\b(?:e\.g|i\.e|etc|vs|approx|St|Ave|Rd|No)\.", re.IGNORECASE)
+
+
+def _uncited_statements(reply: str) -> List[str]:
+    """Sentences of *reply* that state something without citing a record.
+
+    Fragments of fewer than three words (a bare "Yes.") are not counted as
+    statements. Splitting is heuristic; when it errs, an answer is withheld
+    rather than shown without support.
+    """
+    masked = _ABBREVIATION.sub(lambda m: m.group(0).replace(".", "\0"), reply.strip())
+    uncited = []
+    for fragment in _SENTENCE_END.split(masked):
+        sentence = fragment.replace("\0", ".").strip()
+        words = re.findall(r"\w+", _CITATION.sub(" ", sentence))
+        if len(words) >= 3 and not _CITATION.search(sentence):
+            uncited.append(sentence)
+    return uncited
 
 
 def _haversine_m(lat1, lon1, lat2, lon2) -> np.ndarray:
@@ -425,5 +447,11 @@ class DemoService:
             return GroundedAnswer(
                 "", records=evidence, refused=True,
                 reason="the reply cited no retrieved record, so it was withheld",
+            )
+        uncited = _uncited_statements(reply)
+        if uncited:
+            return GroundedAnswer(
+                "", records=evidence, refused=True,
+                reason=f"{len(uncited)} sentence(s) of the reply cite no record, so it was withheld",
             )
         return GroundedAnswer(reply, citations=cited, records=evidence, reason="generated from retrieved records")

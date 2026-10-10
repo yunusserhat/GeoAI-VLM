@@ -90,6 +90,7 @@ DESCRIPTION_COLUMNS = (
     # -- provenance added in 0.4 --
     "backend",
     "backend_version",
+    "backend_endpoint",
     "model_revision",
     "generation_params",
     "system_prompt_mode_effective",
@@ -378,6 +379,7 @@ class BaseBackend(ABC):
         return {
             "backend": self.name,
             "backend_version": None,
+            "endpoint": None,
             "model_revision": None,
             "generation_params": {},
         }
@@ -519,6 +521,10 @@ class _ChatBackend(BaseBackend):
     def backend_version(self) -> Optional[str]:
         return None
 
+    def endpoint(self) -> Optional[str]:
+        """Where a remote backend's model runs; ``None`` for local backends."""
+        return None
+
     @property
     def model_revision(self) -> Optional[str]:
         """Resolved Hugging Face commit sha (``None`` when it cannot be known)."""
@@ -530,6 +536,7 @@ class _ChatBackend(BaseBackend):
         return {
             "backend": self.name,
             "backend_version": self.backend_version(),
+            "endpoint": self.endpoint(),
             "model_revision": self.model_revision,
             "generation_params": self.generation_params(),
         }
@@ -848,8 +855,11 @@ class TransformersBackend(_ChatBackend):
             _manual_seed(self.seed)
         with _no_grad():
             output_ids = self.model.generate(**inputs, **self._generation_kwargs())
-        prompt_length = inputs["input_ids"].shape[1]
-        new_tokens = output_ids[:, prompt_length:]
+        if getattr(getattr(self.model, "config", None), "is_encoder_decoder", False):
+            # generate() returns only the decoder sequence: nothing to strip.
+            new_tokens = output_ids
+        else:
+            new_tokens = output_ids[:, inputs["input_ids"].shape[1]:]
         texts = self.processor.batch_decode(new_tokens, skip_special_tokens=True)
         return [t.strip() for t in texts]
 
@@ -1411,13 +1421,17 @@ class ImageDescriber:
         )
         canonical = canonical_generation_params(params)
         revision = info.get("model_revision")
+        name = info.get("backend") or getattr(backend, "name", type(backend).__name__)
+        endpoint = info.get("endpoint")
         return {
-            "backend": info.get("backend") or getattr(backend, "name", type(backend).__name__),
+            "backend": name,
             "backend_version": info.get("backend_version"),
+            "backend_endpoint": endpoint,
             "model_revision": revision,
             "generation_params": canonical,
             "processing_id": compute_processing_id(
-                self.model_name, self.prompt_version, revision, canonical
+                self.model_name, self.prompt_version, revision, canonical,
+                backend=name, endpoint=endpoint,
             ),
         }
 
@@ -1425,11 +1439,12 @@ class ImageDescriber:
     def processing_id(self) -> str:
         """Identity of *this* derived output.
 
-        Covers the model, its resolved revision, the prompt version and every
-        output-affecting generation setting. Resume decisions key on this
-        rather than the image id alone, so re-running the same images under a
-        different model, revision, prompt or decoding configuration produces
-        a new derived record instead of being skipped as already finished.
+        Covers the model, its resolved revision, the prompt version, every
+        output-affecting generation setting and the backend (with the
+        endpoint of an HTTP server). Resume decisions key on this rather than
+        the image id alone, so re-running the same images under a different
+        model, revision, prompt, decoding configuration or engine produces a
+        new derived record instead of being skipped as already finished.
         """
         return self.provenance()["processing_id"]
 
@@ -1612,6 +1627,7 @@ class ImageDescriber:
             {
                 "backend": run.get("backend"),
                 "backend_version": run.get("backend_version"),
+                "backend_endpoint": run.get("backend_endpoint"),
                 "model_revision": run.get("model_revision"),
                 "generation_params": json.dumps(run.get("generation_params") or {}, sort_keys=True),
                 "system_prompt_mode_effective": output.system_prompt_mode,

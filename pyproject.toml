@@ -132,7 +132,7 @@ panorama = [
     "zensvi>=1.4.3",
 ]
 all = [
-    "geoai-vlm[vlm,qwen,quant,network,segment,search,slope,download,panorama]",
+    "geoai-vlm[vlm,qwen,quant,network,segment,search,slope,download,panorama,app]",
 ]
 dev = [
     "pytest>=9.0.0",

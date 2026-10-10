@@ -42,7 +42,15 @@ def _enum_values(text: str) -> Optional[List[str]]:
 
 def _convert(value: Any, add_unknown: bool) -> Dict[str, Any]:
     if isinstance(value, dict):
-        props = {k: _convert(v, add_unknown) for k, v in value.items()}
+        props: Dict[str, Any] = {}
+        options: Optional[List[Any]] = None  # vocabulary of the previous enum field
+        for key, item in value.items():
+            if isinstance(item, str) and item.lower().startswith("same options or null") and options:
+                props[key] = {"type": ["string", "null"], "enum": options + [None]}
+                continue
+            props[key] = _convert(item, add_unknown)
+            if props[key].get("type") == "string" and "enum" in props[key]:
+                options = list(props[key]["enum"])
         return {
             "type": "object",
             "properties": props,

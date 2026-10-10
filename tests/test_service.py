@@ -252,13 +252,33 @@ class TestGroundedAnswers:
             ("INSUFFICIENT_EVIDENCE", "found no answer"),
             ("", "found no answer"),
             ("[a1]\n[a1]", "made no statement"),
+            ("Small shops line the street [a1]. Highways run through the whole area.", "cite no record"),
         ],
-        ids=["uncited", "unknown-id", "unretrieved-id", "refusal-token", "empty", "citations-only"],
+        ids=[
+            "uncited", "unknown-id", "unretrieved-id", "refusal-token", "empty",
+            "citations-only", "one-sentence-uncited",
+        ],
     )
     def test_unsupported_replies_are_withheld(self, reply, reason):
         result = _service(_Chat(reply)).answer("Q: shops")
         assert result.refused and result.answer == ""
         assert reason in result.reason
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "Small shops line the street [a1]. The street is narrow [a1].",
+            "Small shops line the street. [a1] The street is narrow. [a1]",
+            "The lane is about 2.5 m wide [a1].",
+            "Shops, e.g. bakeries, line the street [a1].",
+            "Small shops line the street [a1]. Yes.",
+        ],
+        ids=["each-cited", "citation-after-full-stop", "decimal", "abbreviation", "short-fragment"],
+    )
+    def test_every_statement_needs_a_citation_but_not_every_fragment(self, reply):
+        result = _service(_Chat(reply)).answer("Q: shops")
+        assert not result.refused, result.reason
+        assert result.citations == ["a1"]
 
     def test_empty_question(self):
         assert _service().answer("   ").refused

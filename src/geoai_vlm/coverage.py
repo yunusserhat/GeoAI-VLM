@@ -176,9 +176,11 @@ def recency_report(
     """Share of network length by the year of its most recent image.
 
     Segments are bucketed by the capture year in *time_column* (by default the
-    newest image on the segment) using inclusive upper year edges, plus a
-    ``"no imagery"`` bucket for segments without images. Shares are of
-    network length, so they add up to one within each group.
+    newest image on the segment) using inclusive upper year edges, plus an
+    ``"unknown capture time"`` bucket for segments whose images have no
+    readable capture time and a ``"no imagery"`` bucket for segments without
+    images. Shares are of network length, so they add up to one within each
+    group.
 
     Args:
         summary: :func:`~geoai_vlm.segments.aggregate_segments` output.
@@ -203,8 +205,11 @@ def recency_report(
     labels = _bucket_labels(edges)
     bins = [-np.inf] + [e + 0.5 for e in edges] + [np.inf]
     bucket = pd.cut(years, bins=bins, labels=labels, right=False).astype(object)
-    bucket = bucket.where(years.notna() & (frame["n_images"] > 0), "no imagery")
-    frame["recency"] = pd.Categorical(bucket, categories=labels + ["no imagery"], ordered=True)
+    bucket = bucket.where(years.notna(), "unknown capture time")
+    bucket = bucket.where(frame["n_images"] > 0, "no imagery")
+    frame["recency"] = pd.Categorical(
+        bucket, categories=labels + ["unknown capture time", "no imagery"], ordered=True
+    )
 
     keys = ["recency"] if group_column is None else [group_column, "recency"]
     grouped = (
@@ -216,6 +221,7 @@ def recency_report(
     grouped["length_share"] = grouped["network_length_m"] / totals
     grouped.attrs["note"] = (
         "Recency is the capture year of the newest image on each segment; "
-        "'no imagery' segments have none. Shares are of network length."
+        "'unknown capture time' segments have images without a readable capture "
+        "time; 'no imagery' segments have none. Shares are of network length."
     )
     return grouped

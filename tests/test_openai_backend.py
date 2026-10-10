@@ -377,6 +377,7 @@ class TestDescriberIntegration:
         df = d.describe(image_paths=paths)
         assert list(df["scene_narrative"]) == ["image 1", "image 2"]
         assert set(df["backend"]) == {"openai"}
+        assert set(df["backend_endpoint"]) == {server.base_url}
         assert set(df["decoding_mode"]) == {"json_schema_requested"}
         assert set(df["system_prompt_mode_effective"]) == {"system"}
         assert df["model_revision"].isna().all(), "a server's revision is not observable"

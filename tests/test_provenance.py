@@ -125,6 +125,8 @@ class TestProcessingIdSensitivity:
             {"params": {"json_schema_digest": "abc"}},
             {"params": {"image_max_side": 768}},
             {"params": {"repetition_penalty": 1.1}},
+            {"backend": "vllm"},
+            {"endpoint": "http://other-server:8000/v1"},
         ],
         ids=lambda c: next(iter(c.get("params", c))),
     )
@@ -194,9 +196,31 @@ class TestDescriberProvenance:
         d = _describer(backend)
         row = d.describe(image_paths=_images(tmp_path, ["a"])).iloc[0]
         expected = compute_processing_id(
-            "org/model", d.prompt_version, row["model_revision"], json.loads(row["generation_params"])
+            "org/model", d.prompt_version, row["model_revision"], json.loads(row["generation_params"]),
+            backend=row["backend"], endpoint=row["backend_endpoint"],
         )
         assert row["processing_id"] == expected == d.processing_id
+
+    def test_the_engine_is_part_of_the_configuration(self):
+        class OtherEngine(RecordingBackend):
+            name = "other-engine"
+
+        # Same model, revision, prompt and settings, different engine.
+        assert _describer(RecordingBackend()).processing_id != _describer(OtherEngine()).processing_id
+
+    def test_http_servers_are_told_apart_by_endpoint_without_credentials(self):
+        from geoai_vlm.openai_compat import OpenAICompatibleBackend
+
+        def run(url):
+            return _describer(OpenAICompatibleBackend("served-name", base_url=url)).provenance()
+
+        a, b = run("http://server-a:8000/v1"), run("http://server-b:8000/v1")
+        # A served model name is only a label: two servers may hold different weights.
+        assert a["processing_id"] != b["processing_id"]
+        with_credentials = run("http://user:s3cret-pass@server-a:8000/v1")
+        assert with_credentials["backend_endpoint"] == "http://server-a:8000/v1"
+        assert with_credentials["processing_id"] == a["processing_id"]
+        assert "s3cret" not in json.dumps(with_credentials)
 
     def test_existing_columns_keep_their_order(self):
         assert DESCRIPTION_COLUMNS[:16] == (

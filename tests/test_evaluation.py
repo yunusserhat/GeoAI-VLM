@@ -207,6 +207,17 @@ class TestSplits:
         split = grouped_split(df, ["g"], test_size=0.5, seed=0)
         assert split["split_component"].nunique() == 3
 
+    def test_nullable_and_datetime_missing_values_do_not_link_rows(self):
+        df = pd.DataFrame(
+            {
+                "seq": pd.array([pd.NA, pd.NA, 7, 7], dtype="Int64"),
+                "day": pd.to_datetime([None, None, "2024-05-01", "2024-05-01"]),
+            }
+        )
+        for column in ("seq", "day"):
+            split = grouped_split(df, [column], test_size=0.5, seed=0)
+            assert split["split_component"].nunique() == 3, column
+
     def test_bad_test_size(self):
         with pytest.raises(ValueError):
             grouped_split(pd.DataFrame({"g": [1]}), ["g"], test_size=1.0)

@@ -17,6 +17,7 @@ Hand-computed expectations (metres; see tests/test_segments.py for the layout):
 
     recency (newest image per segment, edges 2018 and 2021)
                    A 2021 -> "2019-2021"; B 2023, C 2024 -> ">= 2022"; D -> "no imagery"
+                   (an imaged segment without a capture time -> "unknown capture time")
 
 No real data is used.
 """
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pytest
 from shapely.geometry import box
 
@@ -119,13 +121,28 @@ class TestCoverageByArea:
 class TestRecency:
     def test_length_share_by_newest_capture_year(self, summary):
         table = recency_report(summary, year_edges=(2018, 2021)).set_index("recency")
-        assert list(table.index) == ["<= 2018", "2019-2021", ">= 2022", "no imagery"]
+        assert list(table.index) == [
+            "<= 2018", "2019-2021", ">= 2022", "unknown capture time", "no imagery"
+        ]
         assert table.loc["<= 2018", "length_share"] == pytest.approx(0)
+        assert table.loc["unknown capture time", "length_share"] == pytest.approx(0)
         assert table.loc["2019-2021", "length_share"] == pytest.approx(100 / 350)
         assert table.loc[">= 2022", "length_share"] == pytest.approx(150 / 350)
         assert table.loc["no imagery", "length_share"] == pytest.approx(100 / 350)
         assert table["length_share"].sum() == pytest.approx(1)
         assert table.loc[">= 2022", "n_segments"] == 2
+
+    def test_imagery_without_a_capture_time_is_not_no_imagery(self, summary):
+        # C (footway, 50 m, newest image 2024) loses its capture time.
+        summary = summary.copy()
+        newest_2024 = pd.to_datetime(summary["last_capture"], utc=True).dt.year == 2024
+        assert newest_2024.sum() == 1
+        summary.loc[newest_2024, "last_capture"] = pd.NaT
+        table = recency_report(summary, year_edges=(2018, 2021)).set_index("recency")
+        assert table.loc["unknown capture time", "length_share"] == pytest.approx(50 / 350)
+        assert table.loc["no imagery", "length_share"] == pytest.approx(100 / 350)
+        assert table.loc[">= 2022", "length_share"] == pytest.approx(100 / 350)
+        assert table["length_share"].sum() == pytest.approx(1)
 
     def test_per_group_shares_sum_to_one(self, summary):
         table = recency_report(summary, year_edges=(2018, 2021), group_column="road_class")

@@ -254,6 +254,11 @@ class OpenAICompatibleBackend(_ChatBackend):
             version += f"; server fingerprint {self._fingerprint}"
         return version
 
+    def endpoint(self) -> Optional[str]:
+        """The server's base URL without credentials, query or fragment."""
+        parts = urlsplit(_strip_userinfo(self.base_url))
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
     @property
     def model_revision(self) -> Optional[str]:
         """The revision given by the caller; a server's revision is not observable."""

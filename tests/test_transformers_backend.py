@@ -208,6 +208,20 @@ class TestBatchedGeneration:
         texts = processor.batch_decode(out[:, enc["input_ids"].shape[1]:])
         assert any("CORRUPT" in t for t in texts)
 
+    def test_encoder_decoder_output_is_not_cut(self):
+        class EncoderDecoderModel(FakeModel):
+            config = types.SimpleNamespace(is_encoder_decoder=True)
+
+            def generate(self, input_ids, attention_mask=None, **kwargs):
+                self.generate_calls.append(kwargs)
+                # Only the decoder sequence comes back, without the prompt.
+                return np.array([[100 + int(row[-1])] for row in input_ids])
+
+        backend = _ready_backend()
+        backend.model = EncoderDecoderModel()
+        outputs = backend.generate_outputs([_image(4, 8), _image(7, 40)], "s", "u")
+        assert [o.text for o in outputs] == ["desc-4", "desc-7"]
+
     def test_transformers4_signature_gets_keyword_arguments(self):
         backend = _ready_backend(processor=FakeV4Processor())
         outputs = backend.generate_outputs([_image(5, 8), _image(6, 40)], "s", "u")

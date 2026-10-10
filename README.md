@@ -228,7 +228,7 @@ results = describer.describe(
 - `trust_remote_code` is **off by default**. A model that ships its own code raises `RemoteCodeRequiredError` until you review it and opt in with `trust_remote_code=True`.
 - The older backend arguments (`device`, `torch_dtype`, `max_tokens`) still work.
 
-Every description record carries its provenance: `backend`, `backend_version`, `model_revision` (the Hugging Face commit, or `None` when it cannot be known), `generation_params`, `system_prompt_mode_effective`, `decoding_mode` and `processing_id`. `processing_id` covers the model, its revision, the prompt version and the output-affecting generation settings, so resuming a run never mixes outputs from different configurations.
+Every description record carries its provenance: `backend`, `backend_version`, `backend_endpoint` (an HTTP server's URL without credentials), `model_revision` (the Hugging Face commit, or `None` when it cannot be known), `generation_params`, `system_prompt_mode_effective`, `decoding_mode` and `processing_id`. `processing_id` covers the model, its revision, the prompt version, the output-affecting generation settings and the backend (with the endpoint of an HTTP server, whose model names are only labels), so resuming a run never mixes outputs from different configurations.
 
 Check whether a model works before a long run (one synthetic image; reports load, chat template, system-role support, JSON parsing, time and memory):
 

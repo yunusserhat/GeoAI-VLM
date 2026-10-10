@@ -111,7 +111,7 @@ def grouped_split(
     for column in group_columns:
         first_row: Dict[Any, int] = {}
         for i, value in enumerate(df[column].tolist()):
-            if value is None or (isinstance(value, float) and math.isnan(value)):
+            if pd.api.types.is_scalar(value) and pd.isna(value):
                 continue
             if value in first_row:
                 uf.union(first_row[value], i)

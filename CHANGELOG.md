@@ -37,6 +37,7 @@ Real-model results and what was only tested with mocks are listed in
   - Every template now has a JSON schema; responses are validated and the
     problems recorded (`validation_issues`).
 - **Provenance columns** on every description: `backend`, `backend_version`,
+  `backend_endpoint` (an HTTP server's URL without credentials),
   `model_revision` (Hugging Face commit sha, `None` when unknown),
   `generation_params`, `system_prompt_mode_effective`, `decoding_mode`,
   `generation_error`, `validation_issues`.
@@ -60,7 +61,8 @@ Real-model results and what was only tested with mocks are listed in
   `network` extra.
 - **Coverage and recency** (`geoai_vlm.coverage`): by road class, by
   user-supplied areas and by capture year, with network coverage and image
-  counts kept apart.
+  counts kept apart. Segments whose images have no readable capture time are
+  reported as such, not as segments without imagery.
 - **Evaluation tools** (`geoai_vlm.evaluation`): sequence- and
   spatial-block splits with leakage checks, percent agreement, Cohen's kappa
   (weighted or not), ICC(2,1) and ICC(3,1), R-squared, Bland-Altman,
@@ -71,18 +73,23 @@ Real-model results and what was only tested with mocks are listed in
   and versioned label mappings checked against the model.
 - **Research demo**: `geoai_vlm.service` (scene index, image description,
   nearby and similar scenes, answers grounded in retrieved descriptions with
-  image-id citations, declining without evidence) and a local Gradio
+  an image-id citation in every sentence, declining without evidence) and a
+  local Gradio
   interface `geoai_vlm.app` (`app` extra). Example:
   `examples/build_demo_index.py` builds an index from a small subset of a
   published dataset, keeping its attribution.
 - `complete(messages)` on all built-in backends for text-only chats.
-- Extras: `transformers`, `qwen`, `quant`, `network`, `segment`, `app`.
+- Extras: `transformers`, `qwen`, `quant`, `network`, `segment`, `app`;
+  `all` installs every one of them.
 
 ### Changed
 
-- `processing_id` now covers the model revision and the output-affecting
-  generation settings as well as the model and prompt; sampling-only
-  settings are ignored under greedy decoding. **Migration:** records written
+- `processing_id` now covers the model revision, the output-affecting
+  generation settings and the backend (plus the endpoint of an HTTP server,
+  whose model names are only labels) as well as the model and prompt;
+  sampling-only settings are ignored under greedy decoding. Switching
+  between Transformers and vLLM therefore starts a new configuration rather
+  than resuming the other engine's records. **Migration:** records written
   by unreleased development builds with the older two-part id are not
   counted as finished on resume (they cannot be shown to match) and are
   kept as separate records; a note says how many. Releases up to 0.3 wrote

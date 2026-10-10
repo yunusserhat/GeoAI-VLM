@@ -104,12 +104,16 @@ def compute_processing_id(
     prompt_version: str,
     model_revision: Optional[str] = None,
     generation_params: Optional[Mapping[str, Any]] = None,
+    backend: Optional[str] = None,
+    endpoint: Optional[str] = None,
 ) -> str:
     """Identity of one derived output.
 
-    Covers the model id, its resolved revision, the prompt version and the
-    output-affecting generation settings. Two runs share an id only when all
-    four match.
+    Covers the model id, its resolved revision, the prompt version, the
+    output-affecting generation settings and the backend that ran the model.
+    For an HTTP server the endpoint counts too, because a served model name is
+    only a label: two servers can answer to the same name with different
+    weights. Two runs share an id only when all of these match.
     """
     payload = json.dumps(
         {
@@ -117,6 +121,8 @@ def compute_processing_id(
             "model_revision": model_revision,
             "prompt": prompt_version,
             "generation": canonical_generation_params(generation_params or {}),
+            "backend": backend,
+            "endpoint": endpoint,
         },
         sort_keys=True,
         ensure_ascii=False,

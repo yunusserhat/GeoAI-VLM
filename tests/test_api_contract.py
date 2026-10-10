@@ -289,6 +289,23 @@ def test_readme_calls_match_signatures_strictly():
     assert not problems, "README calls that would raise TypeError:\n" + "\n".join(sorted(set(problems)))
 
 
+def test_all_extra_installs_every_runtime_extra():
+    """The README documents ``geoai-vlm[all]`` as installing everything."""
+    tomllib = pytest.importorskip("tomllib")
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    extras = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["optional-dependencies"]
+    (aggregate,) = extras["all"]
+    included = set(re.search(r"\[(.*)\]", aggregate).group(1).split(","))
+    covered = {requirement for name in included for requirement in extras[name]}
+    # An extra need not be listed when what it installs is already covered
+    # (``transformers`` is ``vlm`` without vLLM).
+    missing = [
+        name for name in sorted(set(extras) - {"all", "dev"} - included)
+        if not set(extras[name]) <= covered
+    ]
+    assert not missing, f"[all] does not install: {missing}"
+
+
 def test_strict_checker_catches_the_old_readme_mistakes():
     """The calls that used to be in the README must be flagged."""
     import geoai_vlm
