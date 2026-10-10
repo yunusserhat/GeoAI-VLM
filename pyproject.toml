@@ -90,6 +90,11 @@ qwen = [
 quant = [
     "bitsandbytes>=0.45.0",
 ]
+# Downloading street networks from OpenStreetMap for segment indicators.
+# Segment matching and aggregation themselves only need the core install.
+network = [
+    "osmnx>=2.0.0",
+]
 # Mapillary download path (geoai_vlm.downloader -> zensvi).
 # Kept out of core: zensvi resolves to ~109 packages including torch,
 # torchvision, transformers and CUDA runtime libraries.
@@ -115,7 +120,7 @@ panorama = [
     "zensvi>=1.4.3",
 ]
 all = [
-    "geoai-vlm[vlm,qwen,quant,search,slope,download,panorama]",
+    "geoai-vlm[vlm,qwen,quant,network,search,slope,download,panorama]",
 ]
 dev = [
     "pytest>=9.0.0",

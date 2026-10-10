@@ -200,6 +200,17 @@ def __dir__():  # noqa: D103
     return sorted(set(globals()) | _VISION2SLOPE_EXPORTS)
 
 
+from .segments import (
+    SEGMENT_DEFAULTS,
+    aggregate_segments,
+    load_osm_segments,
+    prepare_segments,
+    read_segment_metadata,
+    segments_from_graph,
+    snap_images_to_segments,
+    write_segment_parquet,
+)
+
 from .visualization import (
     plot_elbow_curve,
     plot_cluster_map,
@@ -333,6 +344,16 @@ __all__ = [
     "ProcessingStatus",
     "ProcessingStage",
     
+    # Street-segment indicators
+    "SEGMENT_DEFAULTS",
+    "prepare_segments",
+    "segments_from_graph",
+    "load_osm_segments",
+    "snap_images_to_segments",
+    "aggregate_segments",
+    "write_segment_parquet",
+    "read_segment_metadata",
+
     # Visualization
     "plot_elbow_curve",
     "plot_cluster_map",
