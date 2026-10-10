@@ -465,6 +465,33 @@ class _ChatBackend(BaseBackend):
         entry = self._system_modes.get(system_prompt or "")
         return entry[1] if entry else None
 
+    def _text_chat(self, messages: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Normalise a text-only chat and apply the system-prompt fallback.
+
+        Content becomes a list of text parts (what processor templates
+        expect). When the chat template cannot take a system turn, the system
+        text is moved to the start of the first user turn, exactly as for
+        image descriptions.
+        """
+        chat: List[Dict[str, Any]] = []
+        for m in messages:
+            content = m["content"]
+            parts = content if isinstance(content, list) else [{"type": "text", "text": str(content)}]
+            chat.append({"role": m["role"], "content": parts})
+        if chat and chat[0]["role"] == "system":
+            system_text = "".join(p.get("text", "") for p in chat[0]["content"])
+            if self._system_mode_for(system_text) == "prepend":
+                rest = chat[1:]
+                if rest and rest[0]["role"] == "user":
+                    rest[0] = {
+                        "role": "user",
+                        "content": [{"type": "text", "text": system_text + "\n\n"}] + rest[0]["content"],
+                    }
+                else:
+                    rest.insert(0, {"role": "user", "content": [{"type": "text", "text": system_text}]})
+                chat = rest
+        return chat
+
     def _warn_unstructured(self) -> None:
         if self.wants_structured and not self._warned_structured:
             warnings.warn(
@@ -863,6 +890,15 @@ class TransformersBackend(_ChatBackend):
         """Generate descriptions for a batch of images, in input order."""
         return [o.text for o in self.generate_outputs(image_paths, system_prompt, user_prompt)]
 
+    def complete(self, messages: Sequence[Dict[str, Any]]) -> str:
+        """Reply to a text-only chat with the loaded model.
+
+        Same interface as :meth:`OpenAICompatibleBackend.complete`, so an
+        application can use either for text questions.
+        """
+        self.load_model()
+        return self._generate_batch([self._text_chat(messages)])[0]
+
     def generation_params(self) -> Dict[str, Any]:
         params = super().generation_params()
         params.update(dtype=self.dtype, quantization=self.quantization)
@@ -1151,6 +1187,15 @@ class VLLMBackend(_ChatBackend):
         """Generate descriptions for a batch of images, in input order."""
         return [o.text for o in self.generate_outputs(image_paths, system_prompt, user_prompt)]
 
+    def complete(self, messages: Sequence[Dict[str, Any]]) -> str:
+        """Reply to a text-only chat (same interface as the HTTP backend)."""
+        self.load_model()
+        from vllm import SamplingParams
+
+        sampling = SamplingParams(temperature=self.temperature, max_tokens=self.max_new_tokens)
+        result = self.llm.chat([self._text_chat(messages)], sampling_params=sampling, use_tqdm=False)
+        return result[0].outputs[0].text
+
     def generation_params(self) -> Dict[str, Any]:
         params = super().generation_params()
         params.update(dtype=self.dtype, quantization=self.quantization)
@@ -1185,7 +1230,10 @@ class ImageDescriber:
         model_name: Hugging Face model id (default: Qwen/Qwen3-VL-2B-Instruct),
             or the model name an OpenAI-compatible server knows it by.
         backend: ``"auto"`` (vLLM with a GPU, else Transformers), ``"vllm"``,
-            ``"transformers"``, ``"openai"``, or a backend instance.
+            ``"transformers"``, ``"openai"``, or a backend instance (anything
+            with a ``generate()`` method). An instance is used as configured,
+            so it can be shared, e.g. by two describers with different
+            templates.
         prompt_template: Prompt template name (see
             :func:`~geoai_vlm.prompts.get_prompt_template`) or None for custom.
         system_prompt: Custom system prompt (overrides template)
@@ -1241,9 +1289,13 @@ class ImageDescriber:
 
         # Initialize backend
         self._backend: Optional[BaseBackend] = None
-        if isinstance(backend, BaseBackend):
+        if isinstance(backend, BaseBackend) or (
+            not isinstance(backend, str) and callable(getattr(backend, "generate", None))
+        ):
+            # A backend instance (built-in, subclass, or any object with a
+            # generate() method), e.g. one shared by several describers.
             self._backend = backend
-            self.backend_name = backend.name
+            self.backend_name = getattr(backend, "name", type(backend).__name__)
         else:
             self.backend_name = backend
 

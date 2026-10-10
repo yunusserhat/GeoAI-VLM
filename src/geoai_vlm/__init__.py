@@ -220,6 +220,7 @@ from .segmentation import (
     class_pixel_fractions,
     mapping_from_id2label,
 )
+from .service import DemoService, GroundedAnswer, SceneIndex
 from .evaluation import (
     SplitLeakageError,
     agreement_report,
@@ -395,6 +396,11 @@ __all__ = [
     "check_label_mapping",
     "class_pixel_fractions",
     "mapping_from_id2label",
+
+    # Demo services (interface-independent; the Gradio app is geoai_vlm.app)
+    "SceneIndex",
+    "DemoService",
+    "GroundedAnswer",
 
     # Evaluation
     "SplitLeakageError",

@@ -96,6 +96,10 @@ segment = [
     "transformers>=4.57.3",
     "torch>=2.9.0",
 ]
+# Local research demo (geoai-vlm app). Gradio 6 is the version tested.
+app = [
+    "gradio>=6.0",
+]
 # Downloading street networks from OpenStreetMap for segment indicators.
 # Segment matching and aggregation themselves only need the core install.
 network = [
