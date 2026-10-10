@@ -13,7 +13,8 @@ Features:
 - GeoParquet output with native geometry columns
 - Automatic distance calculations (haversine)
 - Resume support for incremental processing
-- Multimodal embedding (Qwen3-VL-Embedding) with vector search
+- Multimodal embedding (Qwen3-VL-Embedding, or any CLIP-family dual
+  encoder such as CLIP, SigLIP 2, MetaCLIP or StreetCLIP) with vector search
 - Semantic clustering with spatial autocorrelation analysis
 
 Example:
@@ -96,7 +97,12 @@ from .prompts import (
 from .schemas import validate_json
 
 # New modules – embedding, vector store, clustering, spatial, visualization, preparation
-from .embedding import ImageEmbedder, TransformersEmbeddingBackend, VLLMEmbeddingBackend
+from .embedding import (
+    ClipEmbeddingBackend,
+    ImageEmbedder,
+    TransformersEmbeddingBackend,
+    VLLMEmbeddingBackend,
+)
 from .vectorstore import VectorDB, ChromaVectorStore, FAISSVectorStore
 from .clustering import SemanticClusterer, ClusterConfig
 from .spatial import SpatialAnalyzer, MoranResult
@@ -254,6 +260,7 @@ __all__ = [
     "ImageEmbedder",
     "TransformersEmbeddingBackend",
     "VLLMEmbeddingBackend",
+    "ClipEmbeddingBackend",
     
     # Vector store
     "VectorDB",

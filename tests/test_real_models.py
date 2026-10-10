@@ -15,11 +15,13 @@ from __future__ import annotations
 import json
 import re
 
+import numpy as np
 import pytest
 
 pytestmark = pytest.mark.slow
 
 SMOLVLM = "HuggingFaceTB/SmolVLM-256M-Instruct"
+SIGLIP2 = "google/siglip2-base-patch16-224"
 
 
 @pytest.fixture(scope="module")
@@ -77,3 +79,22 @@ def test_smolvlm_check_model_reports(two_images):
     assert report.chat_template is True
     assert report.system_role is not None
     assert report.peak_rss_mb and report.peak_rss_mb > 0
+
+
+def test_siglip2_embeddings_are_normalised_and_comparable(two_images):
+    pytest.importorskip("torch")
+    pytest.importorskip("transformers")
+    from geoai_vlm import ImageEmbedder
+
+    embedder = ImageEmbedder(backend="clip", model_name=SIGLIP2)
+    images = embedder.embed_images([str(p) for p in two_images])
+    texts = embedder.embed_texts(["a street with a tree", "a plate of food"])
+    both = embedder.embed_multimodal(
+        [{"image": str(two_images[0]), "text": "a street with a tree"}]
+    )
+
+    assert images.shape[1] == texts.shape[1] == both.shape[1]
+    for arr in (images, texts, both):
+        assert np.allclose(np.linalg.norm(arr, axis=1), 1.0, atol=1e-4)
+    one_by_one = np.vstack([embedder.embed_images([str(p)]) for p in two_images])
+    assert np.allclose(images, one_by_one, atol=1e-4), "batching changed the embedding"
