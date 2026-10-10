@@ -173,6 +173,153 @@ def test_readme_python_blocks_use_real_keywords():
 
 
 # ---------------------------------------------------------------------------
+# Stricter README check: classes, methods, nested arguments, **kwargs chains
+# ---------------------------------------------------------------------------
+# The check above only sees lower-case function names, skips anything taking
+# **kwargs and stops at nested parentheses -- which is how calls such as
+# describe_place(query=...) and embed_multimodal(texts=..., image_paths=...)
+# stayed in the README while failing at runtime. This version also checks
+# class constructors and method calls, and follows the documented **kwargs
+# forwarding chains.
+_CALL = re.compile(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(((?:[^()]|\([^()]*\))*)\)")
+_METHOD_CALL = re.compile(r"\.([a-z_][a-z0-9_]*)\s*\(((?:[^()]|\([^()]*\))*)\)")
+_KEYWORD = re.compile(r"(?<![=!<>])\b(\w+)\s*=(?!=)")
+
+
+def _keywords(args: str) -> set:
+    flat = re.sub(r"\([^()]*\)|\[[^\[\]]*\]|\{[^{}]*\}", "()", args)
+    flat = re.sub(r"(\"[^\"]*\"|'[^']*')", '""', flat)
+    return set(_KEYWORD.findall(flat))
+
+
+def _forwarding_chains():
+    import geoai_vlm
+    from geoai_vlm.describer import ImageDescriber, TransformersBackend, VLLMBackend
+    from geoai_vlm.openai_compat import OpenAICompatibleBackend
+    from geoai_vlm.pipeline import describe_query
+
+    backends = [TransformersBackend, VLLMBackend, OpenAICompatibleBackend]
+    describer_chain = [ImageDescriber] + backends
+    query_chain = [describe_query] + describer_chain
+    # name -> (callables reached through **kwargs, parameters the forwarder
+    # fills itself, which a caller therefore cannot pass)
+    chains = {
+        "ImageDescriber": (backends, {"model_name", "model"}),
+        "describe_query": (describer_chain, {"model_name", "backend", "prompt_template"}),
+        "check_model": (describer_chain, {"model_name", "prompt_template", "system_prompt_mode"}),
+    }
+    for name in ("describe_place", "describe_point", "describe_line", "describe_bbox", "describe_polygon"):
+        chains[name] = (query_chain, {"query"})
+    chains["embed_place"] = ([geoai_vlm.describe_place] + query_chain, {"query"})
+    return chains
+
+
+def _allowed(obj, name, chains):
+    own = set(_params(obj))
+    if not _accepts_kwargs(obj):
+        return own
+    if name not in chains:
+        return None  # unknown forwarding: cannot check
+    targets, filled = chains[name]
+    forwarded = set()
+    for target in targets:
+        forwarded |= set(_params(target))
+    return own | (forwarded - filled)
+
+
+def _public_methods():
+    import geoai_vlm
+
+    methods = {}
+    for export in geoai_vlm.__all__:
+        if export in geoai_vlm._VISION2SLOPE_EXPORTS:
+            continue
+        cls = getattr(geoai_vlm, export, None)
+        if not inspect.isclass(cls):
+            continue
+        for meth_name, meth in inspect.getmembers(cls, predicate=inspect.isfunction):
+            if not meth_name.startswith("_"):
+                methods.setdefault(meth_name, []).append(meth)
+    return methods
+
+
+def test_readme_calls_match_signatures_strictly():
+    import geoai_vlm
+
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```python\n(.*?)```", readme, flags=re.DOTALL)
+    chains = _forwarding_chains()
+    methods = _public_methods()
+    problems, checked = [], 0
+
+    for block in blocks:
+        for match in _CALL.finditer(block):
+            name, args = match.group(1), match.group(2)
+            if name not in geoai_vlm.__all__:
+                continue
+            try:
+                obj = getattr(geoai_vlm, name)
+            except ImportError:  # optional Vision2Slope stack not installed
+                continue
+            if not callable(obj):
+                continue
+            allowed = _allowed(obj, name, chains)
+            if allowed is None:
+                continue
+            checked += 1
+            unknown = _keywords(args) - allowed
+            if unknown:
+                problems.append(f"{name}(): unknown argument(s) {sorted(unknown)}")
+
+        for match in _METHOD_CALL.finditer(block):
+            name, args = match.group(1), match.group(2)
+            candidates = methods.get(name)
+            if not candidates:
+                continue
+            allowed_sets = [_allowed(m, name, chains) for m in candidates]
+            if any(a is None for a in allowed_sets):
+                continue
+            checked += 1
+            # A keyword is wrong only if no class with this method accepts it.
+            unknown = _keywords(args) - set().union(*allowed_sets)
+            if unknown:
+                problems.append(f".{name}(): unknown argument(s) {sorted(unknown)}")
+
+    assert checked > 30, f"only {checked} calls checked; the parser is not seeing the README"
+    assert not problems, "README calls that would raise TypeError:\n" + "\n".join(sorted(set(problems)))
+
+
+def test_all_extra_installs_every_runtime_extra():
+    """The README documents ``geoai-vlm[all]`` as installing everything."""
+    tomllib = pytest.importorskip("tomllib")
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    extras = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["optional-dependencies"]
+    (aggregate,) = extras["all"]
+    included = set(re.search(r"\[(.*)\]", aggregate).group(1).split(","))
+    covered = {requirement for name in included for requirement in extras[name]}
+    # An extra need not be listed when what it installs is already covered
+    # (``transformers`` is ``vlm`` without vLLM).
+    missing = [
+        name for name in sorted(set(extras) - {"all", "dev"} - included)
+        if not set(extras[name]) <= covered
+    ]
+    assert not missing, f"[all] does not install: {missing}"
+
+
+def test_strict_checker_catches_the_old_readme_mistakes():
+    """The calls that used to be in the README must be flagged."""
+    import geoai_vlm
+
+    chains = _forwarding_chains()
+    allowed = _allowed(geoai_vlm.describe_place, "describe_place", chains)
+    assert "query" not in allowed and "place_name" in allowed and "system_prompt" in allowed
+    methods = _public_methods()
+    multimodal = set().union(*[_allowed(m, "embed_multimodal", chains) for m in methods["embed_multimodal"]])
+    assert not {"texts", "image_paths"} & multimodal
+    assert _keywords('f(a, k_range=(2, 20), x=g(y=1), s="z=1")') == {"k_range", "x", "s"}
+
+
+# ---------------------------------------------------------------------------
 # Notebook calls must match too
 # ---------------------------------------------------------------------------
 def test_demo_notebook_plot_calls_match_signature():

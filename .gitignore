@@ -99,3 +99,6 @@ external/
 demo_*_output/
 chroma_db/
 faiss_index/
+
+# Local demo index built by examples/build_demo_index.py (derived data; not redistributed here)
+demo_index/

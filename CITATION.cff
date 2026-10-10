@@ -2,14 +2,14 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "GeoAI-VLM: Geospatial Vision-Language Model Analysis"
-abstract: "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
+abstract: "Geospatial vision-language model analysis for street-level imagery. Downloads Mapillary images by location, describes them with open vision-language models through Transformers, vLLM or any OpenAI-compatible endpoint, embeds and clusters them, and turns image observations into street-segment indicators with coverage, recency and evaluation tools."
 authors:
   - family-names: "Bıçakçı"
     given-names: "Yunus Serhat"
     email: "yunus.serhat@marmara.edu.tr"
     orcid: "https://orcid.org/0000-0002-7288-9959"
-version: "0.3"
-date-released: 2026-06-25
+version: "0.4.0"
+date-released: 2026-10-10
 license: GPL-3.0-or-later
 doi: 10.5281/zenodo.18169685
 repository-code: "https://github.com/yunusserhat/GeoAI-VLM"
@@ -28,3 +28,6 @@ keywords:
   - multimodal
   - road-slope
   - slope-estimation
+  - active-mobility
+  - street-segments
+  - evaluation

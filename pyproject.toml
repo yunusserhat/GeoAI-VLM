@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geoai-vlm"
-version = "0.3"
-description = "Geospatial Vision-Language Model analysis for street-level imagery. Download Mapillary images by location and generate structured descriptions using VLMs."
+version = "0.4.0"
+description = "Geospatial vision-language model analysis for street-level imagery: model-agnostic VLM descriptions, embeddings, street-segment indicators, coverage and evaluation tools."
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
 authors = [
@@ -28,20 +28,22 @@ keywords = [
     "multimodal",
     "road-slope",
     "slope-estimation",
+    "active-mobility",
+    "street-segments",
+    "openai-compatible",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 # Core: everything needed for geospatial queries, download, GeoParquet I/O,
 # description parsing, clustering and spatial statistics. Deliberately free of
@@ -65,13 +67,45 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Running a VLM locally (description + embedding generation).
+# Running a VLM locally (description + embedding generation) with vLLM on a
+# GPU, or with Transformers. The vLLM path is model-agnostic (LLM.chat) and no
+# longer needs a model-family helper package.
 vlm = [
     "vllm>=0.13.0",
-    "qwen-vl-utils>=0.0.14",
     "transformers>=4.57.3",
     "torch>=2.9.0",
     "accelerate>=1.12.0",
+]
+# Local inference with Transformers only (CPU, Apple silicon, or a GPU
+# without vLLM). Also enough for the CLIP-family embedding backend.
+transformers = [
+    "transformers>=4.57.3",
+    "torch>=2.9.0",
+    "accelerate>=1.12.0",
+]
+# Qwen3-VL-Embedding through Transformers still uses Qwen's own vision
+# preprocessing helper; nothing else in the package needs it.
+qwen = [
+    "qwen-vl-utils>=0.0.14",
+]
+# 4-bit / 8-bit loading for the Transformers backend (CUDA).
+quant = [
+    "bitsandbytes>=0.45.0",
+]
+# Semantic segmentation measurements (class pixel fractions) with a
+# Cityscapes-trained Transformers model.
+segment = [
+    "transformers>=4.57.3",
+    "torch>=2.9.0",
+]
+# Local research demo (geoai-vlm app). Gradio 6 is the version tested.
+app = [
+    "gradio>=6.0",
+]
+# Downloading street networks from OpenStreetMap for segment indicators.
+# Segment matching and aggregation themselves only need the core install.
+network = [
+    "osmnx>=2.0.0",
 ]
 # Mapillary download path (geoai_vlm.downloader -> zensvi).
 # Kept out of core: zensvi resolves to ~109 packages including torch,
@@ -98,7 +132,7 @@ panorama = [
     "zensvi>=1.4.3",
 ]
 all = [
-    "geoai-vlm[vlm,search,slope,download,panorama]",
+    "geoai-vlm[vlm,qwen,quant,network,segment,search,slope,download,panorama,app]",
 ]
 dev = [
     "pytest>=9.0.0",
@@ -115,6 +149,7 @@ Repository = "https://github.com/yunusserhat/geoai-vlm"
 Issues = "https://github.com/yunusserhat/geoai-vlm/issues"
 
 [project.scripts]
+geoai-vlm = "geoai_vlm.cli:main"
 vision2slope = "geoai_vlm.vision2slope.cli:main"
 
 [tool.hatch.build.targets.wheel]
@@ -141,12 +176,7 @@ select = ["E", "F", "W", "I", "N", "D", "UP"]
 ignore = ["D100", "D104"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
-[tool.uv]
-override-dependencies = [
-    "huggingface-hub<1.0.0",
-    "attrs>=22.2.0",
-]

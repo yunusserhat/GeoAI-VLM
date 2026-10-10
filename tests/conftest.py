@@ -20,6 +20,46 @@ from shapely.geometry import Point
 
 
 # ---------------------------------------------------------------------------
+# Real-model ("slow") tests
+# ---------------------------------------------------------------------------
+# Tests marked ``@pytest.mark.slow`` download and run real models. They are
+# skipped unless ``--run-slow`` is given, so CI never downloads a model.
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-slow",
+        action="store_true",
+        default=False,
+        help="run tests marked slow (they download and run real models)",
+    )
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "slow: downloads and runs a real model; skipped unless --run-slow"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-slow"):
+        return
+    skip = pytest.mark.skip(reason="real-model test; run with --run-slow")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _no_hub_network(request, monkeypatch):
+    """Keep CPU tests off the network: model revisions resolve offline.
+
+    Without this, computing a processing_id for a real backend class would
+    ask the Hugging Face Hub for the current commit sha.
+    """
+    if "slow" not in request.keywords:
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+
+
+# ---------------------------------------------------------------------------
 # Synthetic GeoDataFrame
 # ---------------------------------------------------------------------------
 @pytest.fixture

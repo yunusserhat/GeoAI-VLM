@@ -10,14 +10,33 @@ from __future__ import annotations
 
 from typing import Dict, Any
 
+from .audit import (
+    AUDIT_ITEMS,
+    AUDIT_JSON_SCHEMA,
+    AUDIT_STATES,
+    AUDIT_SYSTEM_PROMPT,
+    AUDIT_TEMPLATE_NAME,
+    AUDIT_USER_PROMPT,
+    CONFIDENCE_LEVELS,
+    flatten_audit_response,
+)
+from .schemas import SIMPLE_JSON_SCHEMA, descriptive_to_json_schema
+
 
 __all__ = [
     "GEOAI_SYSTEM_PROMPT",
     "GEOAI_USER_PROMPT",
     "GEOAI_SCHEMA",
+    "GEOAI_JSON_SCHEMA",
     "SIMPLE_SYSTEM_PROMPT",
     "SIMPLE_USER_PROMPT",
+    "SIMPLE_JSON_SCHEMA",
+    "ACTIVE_MOBILITY_AUDIT_SYSTEM_PROMPT",
+    "ACTIVE_MOBILITY_AUDIT_USER_PROMPT",
+    "ACTIVE_MOBILITY_AUDIT_SCHEMA",
+    "PROMPT_TEMPLATES",
     "get_prompt_template",
+    "list_prompt_templates",
 ]
 
 
@@ -85,6 +104,12 @@ GEOAI_SCHEMA: Dict[str, Any] = {
     },
     "semantic_tags": "list of 5-10 keywords for embedding/clustering"
 }
+
+
+#: ``GEOAI_SCHEMA`` as a JSON Schema, for validation and constrained decoding.
+#: Every closed vocabulary also admits "unknown" and every boolean admits null,
+#: so constrained decoding never forces a guess.
+GEOAI_JSON_SCHEMA: Dict[str, Any] = descriptive_to_json_schema(GEOAI_SCHEMA)
 
 
 # =============================================================================
@@ -208,20 +233,71 @@ Return JSON with "description" (2-3 sentences) and "tags" (5-10 keywords)."""
 
 
 # =============================================================================
+# Active mobility audit (versioned observation protocol)
+# =============================================================================
+# Only features observable in one photograph; per item a state, a confidence
+# and a short visual cue. See geoai_vlm.audit for the item definitions, the
+# JSON schema and the normalisation rules. Any change to these prompts must
+# ship under a new template name (active_mobility_audit_v2, ...).
+ACTIVE_MOBILITY_AUDIT_SYSTEM_PROMPT = AUDIT_SYSTEM_PROMPT
+ACTIVE_MOBILITY_AUDIT_USER_PROMPT = AUDIT_USER_PROMPT
+
+
+def _audit_descriptive_schema() -> Dict[str, Any]:
+    items = {}
+    for item, spec in AUDIT_ITEMS.items():
+        fields = {
+            "state": "|".join(AUDIT_STATES),
+            "confidence": "|".join(CONFIDENCE_LEVELS),
+            "evidence": "string (short visual cue)",
+        }
+        attribute = spec.get("attribute")
+        if attribute:
+            fields[attribute[0]] = "|".join(attribute[1]) + " or null"
+        items[item] = fields
+    return {
+        "items": items,
+        "image_quality": {"usable_for_analysis": "boolean", "issues": "list"},
+    }
+
+
+ACTIVE_MOBILITY_AUDIT_SCHEMA: Dict[str, Any] = _audit_descriptive_schema()
+
+
+# =============================================================================
 # Prompt Templates
 # =============================================================================
+# Each template: "system" and "user" prompts, the descriptive "schema" shown to
+# the model, and a machine-readable "json_schema" used for validation and,
+# when requested, constrained decoding. A template may also provide
+# "flatten", turning a parsed response into extra flat record columns.
 PROMPT_TEMPLATES = {
     "geoai": {
         "system": GEOAI_SYSTEM_PROMPT,
         "user": GEOAI_USER_PROMPT,
         "schema": GEOAI_SCHEMA,
+        "json_schema": GEOAI_JSON_SCHEMA,
     },
     "simple": {
         "system": SIMPLE_SYSTEM_PROMPT,
         "user": SIMPLE_USER_PROMPT,
         "schema": {"description": "string", "tags": "list"},
+        "json_schema": SIMPLE_JSON_SCHEMA,
+    },
+    AUDIT_TEMPLATE_NAME: {
+        "system": ACTIVE_MOBILITY_AUDIT_SYSTEM_PROMPT,
+        "user": ACTIVE_MOBILITY_AUDIT_USER_PROMPT,
+        "schema": ACTIVE_MOBILITY_AUDIT_SCHEMA,
+        "json_schema": AUDIT_JSON_SCHEMA,
+        "flatten": flatten_audit_response,
+        "version": "v1",
     },
 }
+
+
+def list_prompt_templates() -> list:
+    """Names of the available prompt templates."""
+    return sorted(PROMPT_TEMPLATES)
 
 
 def get_prompt_template(template_name: str = "geoai") -> Dict[str, Any]:
@@ -229,10 +305,11 @@ def get_prompt_template(template_name: str = "geoai") -> Dict[str, Any]:
     Get a prompt template by name.
     
     Args:
-        template_name: Name of the template ("geoai" or "simple")
+        template_name: Name of the template (see :func:`list_prompt_templates`)
         
     Returns:
-        Dictionary with "system", "user", and "schema" keys
+        Dictionary with "system", "user", "schema" and "json_schema" keys
+        (and "flatten" where the template defines one)
         
     Raises:
         ValueError: If template_name is not found
