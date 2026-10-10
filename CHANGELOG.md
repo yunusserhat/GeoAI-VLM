@@ -2,7 +2,7 @@
 
 All notable changes to GeoAI-VLM. Dates are release dates on PyPI.
 
-## [0.4.0] - unreleased
+## [0.4.0] - 2026-10-10
 
 Model independence and street-level indicators for active mobility research.
 Real-model results and what was only tested with mocks are listed in
@@ -108,6 +108,11 @@ Real-model results and what was only tested with mocks are listed in
 - The Transformers backend could not load any model with transformers 5
   (`AutoModelForVision2Seq` was removed upstream).
 - The vLLM backend only worked with Qwen models (`qwen_vl_utils`).
+- `uv pip install` / `uv sync` inside the repository paired transformers 5
+  with an incompatible huggingface-hub because of a uv-only
+  `override-dependencies` block (`huggingface-hub<1.0.0`, `attrs>=22.2.0`).
+  The block is removed; the `download` and `all` extras resolve to the same
+  versions without it. pip was never affected.
 - README examples that raised or misbehaved: `describe_place(query=...)`,
   `embed_multimodal(texts=..., image_paths=...)`, `find_optimal_k(k_range=range(...))`
   (silently evaluated k=2 only), `moran_global(...).I` (it returns a dict),
@@ -155,11 +160,6 @@ tests and migration paths are in [docs/review_findings.md](docs/review_findings.
 - The vLLM backend and 4-bit/8-bit loading were not run on a GPU for this
   release (API checked against the vLLM 0.13.0 and 0.31.0 sources and with a
   fake module).
-- `[tool.uv] override-dependencies = ["huggingface-hub<1.0.0"]` in
-  `pyproject.toml` (kept from earlier releases for the ZenSVI pin) makes
-  `uv pip install` / `uv sync` inside the repository pair transformers 5 with
-  an incompatible huggingface-hub. Use pip or `uv pip install --no-config`
-  until this is resolved.
 - CLIP-family text encoders separate similar descriptions poorly, so the
   demo's question answering retrieves better with Qwen3-VL-Embedding.
 

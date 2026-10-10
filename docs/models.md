@@ -131,13 +131,3 @@ Verified by reading the installed sources:
   `limit_mm_per_prompt` go through `EngineArgs`. vLLM 0.31 requires
   transformers `>=5.10.4,<5.18`; vLLM 0.13-0.19 require transformers `<5`.
 * The SmolVLM / SmolVLM2 processors import `num2words`.
-
-## Known packaging caveat
-
-`pyproject.toml` carries a uv-only override, `[tool.uv] override-dependencies
-= ["huggingface-hub<1.0.0", ...]`, which predates this release. With
-transformers 5 on PyPI it makes `uv pip install` / `uv sync` *inside the
-repository* resolve transformers 5.x together with huggingface-hub 0.36,
-which fails at import. pip is unaffected, and `uv pip install --no-config`
-avoids it. Whether to drop the override or add a matching `transformers<5`
-constraint is an open decision (see the changelog).
