@@ -567,7 +567,13 @@ def _auto_vlm_class():
 
 def _dtype_load_kwarg(dtype: Optional[str]) -> Dict[str, Any]:
     """``{"dtype": ...}`` on transformers >= 4.56, ``{"torch_dtype": ...}`` before."""
-    import torch
+    try:
+        import torch
+    except ImportError as exc:
+        raise ImportError(
+            "The Transformers backend needs torch. Install it with: "
+            "pip install 'geoai-vlm[transformers]'"
+        ) from exc
     import transformers
     from packaging.version import Version
 
@@ -713,10 +719,15 @@ class TransformersBackend(_ChatBackend):
         if self.model is not None:
             return
 
+        try:
+            from transformers import AutoProcessor
+        except ImportError as exc:
+            raise ImportError(
+                "The Transformers backend needs transformers and torch. Install them with: "
+                "pip install 'geoai-vlm[transformers]' (or 'geoai-vlm[vlm]' for vLLM as well)"
+            ) from exc
+
         print(f"Loading Transformers model: {self.model_name}")
-
-        from transformers import AutoProcessor
-
         model_cls = _auto_vlm_class()
         common: Dict[str, Any] = {"trust_remote_code": self.trust_remote_code}
         if self.revision:
@@ -1054,7 +1065,13 @@ class VLLMBackend(_ChatBackend):
         if self.llm is not None:
             return
 
-        from vllm import LLM
+        try:
+            from vllm import LLM
+        except ImportError as exc:
+            raise ImportError(
+                "The vLLM backend needs vLLM (Linux with an NVIDIA GPU). Install it with: "
+                "pip install 'geoai-vlm[vlm]', or use backend='transformers' or 'openai'"
+            ) from exc
 
         # vLLM must spawn its workers when CUDA is already initialised; keep a
         # caller's explicit choice.

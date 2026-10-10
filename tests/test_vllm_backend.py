@@ -131,6 +131,11 @@ class TestEngine:
         backend = VLLMBackend("org/model", tensor_parallel_size=1)
         assert [o.text for o in backend.generate_outputs([_img(1)], "s", "u")] == ["img-1"]
 
+    def test_missing_vllm_names_the_extra(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "vllm", None)
+        with pytest.raises(ImportError, match=r"geoai-vlm\[vlm\]"):
+            VLLMBackend("org/model", tensor_parallel_size=1).load_model()
+
     def test_remote_code_error_is_explained(self, monkeypatch, no_probe):
         _install_fake_vllm(
             monkeypatch,

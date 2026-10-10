@@ -427,3 +427,8 @@ class TestLoading:
         monkeypatch.setitem(sys.modules, "bitsandbytes", None)
         with pytest.raises(ImportError, match=r"geoai-vlm\[quant\]"):
             TransformersBackend("fake/model", quantization="4bit").load_model()
+
+    def test_missing_transformers_names_the_extra(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "transformers", None)
+        with pytest.raises(ImportError, match=r"geoai-vlm\[transformers\]"):
+            TransformersBackend("fake/model").load_model()
