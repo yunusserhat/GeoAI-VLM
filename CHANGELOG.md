@@ -44,7 +44,8 @@ Real-model results and what was only tested with mocks are listed in
   load, chat template, system role, JSON parsing, time and memory),
   `build-index` and `app`. Also `geoai_vlm.check_model()`.
 - **CLIP-family embeddings**: `ImageEmbedder(backend="clip", model_name=...)`
-  for CLIP, SigLIP, SigLIP 2, MetaCLIP, StreetCLIP and other dual encoders;
+  for CLIP-family dual encoders (run with SigLIP 2 and CLIP ViT-B/32; MetaCLIP,
+  StreetCLIP and others use the same path but were not run);
   L2-normalised vectors; image+text inputs fused by a weighted mean.
 - **`active_mobility_audit_v1` prompt template**: 19 features observable in a
   photograph, each with a state (`present` / `absent` / `not_visible` /

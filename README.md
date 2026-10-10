@@ -25,7 +25,7 @@ GeoAI-VLM downloads street-level imagery from Mapillary (through [ZenSVI](https:
 
 ### Embedding & Analysis
 
-- 🧬 **Embeddings**: [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) (multimodal) or any CLIP-family dual encoder (CLIP, SigLIP 2, MetaCLIP, StreetCLIP)
+- 🧬 **Embeddings**: [Qwen3-VL-Embedding](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) (multimodal) or a CLIP-family dual encoder such as CLIP or SigLIP 2 ([models actually run](docs/models.md))
 - 🔍 **Vector Search**: ChromaDB or FAISS indices, searchable by text or image
 - 📈 **Semantic Clustering**: K-Means over embeddings with keyword extraction per cluster
 - 🌐 **Spatial Autocorrelation**: Global and local Moran's I
@@ -468,7 +468,8 @@ from geoai_vlm import ImageEmbedder
 # Qwen3-VL-Embedding (auto-selects vLLM or Transformers)
 embedder = ImageEmbedder(model_name="Qwen/Qwen3-VL-Embedding-2B", backend="auto")
 
-# Or any CLIP-family dual encoder: CLIP, SigLIP 2, MetaCLIP, StreetCLIP
+# Or a CLIP-family dual encoder. Run for this release: SigLIP 2 and CLIP ViT-B/32;
+# MetaCLIP, StreetCLIP and other checkpoints use the same path but were not run.
 embedder = ImageEmbedder(backend="clip", model_name="google/siglip2-base-patch16-224")
 
 # Embed text descriptions

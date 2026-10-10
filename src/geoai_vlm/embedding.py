@@ -466,10 +466,11 @@ def _l2_normalise(rows: np.ndarray) -> np.ndarray:
 class ClipEmbeddingBackend(BaseEmbeddingBackend):
     """Embeddings from a CLIP-family dual encoder on the Hugging Face Hub.
 
-    Works with any checkpoint whose model exposes ``get_image_features`` and
-    ``get_text_features`` through ``AutoModel``: CLIP, SigLIP, SigLIP 2
-    (including NaFlex variants), MetaCLIP, StreetCLIP and similar. Image and
-    text vectors share one space, so a text query retrieves images.
+    Meant for any checkpoint whose model exposes ``get_image_features`` and
+    ``get_text_features`` through ``AutoModel``: CLIP, SigLIP, SigLIP 2,
+    MetaCLIP, StreetCLIP and similar. docs/models.md lists the checkpoints
+    actually run. Image and text vectors share one space, so a text query
+    retrieves images.
 
     Every vector is L2-normalised, so inner product equals cosine similarity.
 
